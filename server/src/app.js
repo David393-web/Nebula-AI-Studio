@@ -4,34 +4,41 @@ const helmet = require("helmet");
 const morgan = require("morgan");
 const cookieParser = require("cookie-parser");
 
+const authRoutes = require("./routes/auth.routes");
+
 const app = express();
 
 // Security
 app.use(helmet());
 
-// Logging
-app.use(morgan("dev"));
-
 // CORS
 app.use(
   cors({
-    origin: "http://localhost:5173",
+    origin: true,
     credentials: true,
   })
 );
 
-// Body parsing
-app.use(express.json());
+// Request logging
+app.use(morgan("dev"));
+
+// Request parsing
+app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
 // Cookies
 app.use(cookieParser());
 
-// Health check
-app.get("/api/health", (req, res) => {
+// API routes
+app.use("/api/auth", authRoutes);
+
+// Root route
+app.get("/", (req, res) => {
   res.status(200).json({
     success: true,
-    message: "Nebula AI API is running",
+    name: "Nebula AI API",
+    version: "1.0.0",
+    status: "running",
   });
 });
 
@@ -40,6 +47,17 @@ app.use((req, res) => {
   res.status(404).json({
     success: false,
     message: "Route not found",
+    path: req.originalUrl,
+  });
+});
+
+// Global error handler
+app.use((err, req, res, next) => {
+  console.error(err);
+
+  res.status(err.status || 500).json({
+    success: false,
+    message: err.message || "Internal server error",
   });
 });
 
