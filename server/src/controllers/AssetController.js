@@ -1,20 +1,20 @@
-const imageService = require("../services/Image/image.service");
+const assetService = require("../services/Asset/asset.service");
 
-class ImageController {
+class AssetController {
   async create(req, res, next) {
     try {
       const {
         name,
-        prompt,
+        type,
         url,
         thumbnailUrl,
         metadata,
         projectId,
       } = req.body;
 
-      const image = await imageService.createImage({
+      const asset = await assetService.createAsset({
         name,
-        prompt,
+        type,
         url,
         thumbnailUrl,
         metadata,
@@ -24,9 +24,9 @@ class ImageController {
 
       return res.status(201).json({
         success: true,
-        message: "Image created successfully",
+        message: "Asset created successfully",
         data: {
-          image,
+          asset,
         },
       });
     } catch (error) {
@@ -36,14 +36,14 @@ class ImageController {
 
   async getAll(req, res, next) {
     try {
-      const images = await imageService.getImages(
-        req.user.userId,
+      const assets = await assetService.getAssets(
+        req.user.userId
       );
 
       return res.status(200).json({
         success: true,
         data: {
-          images,
+          assets,
         },
       });
     } catch (error) {
@@ -53,17 +53,15 @@ class ImageController {
 
   async getOne(req, res, next) {
     try {
-      const { id } = req.params;
-
-      const image = await imageService.getImage(
-        id,
-        req.user.userId,
+      const asset = await assetService.getAsset(
+        req.params.id,
+        req.user.userId
       );
 
       return res.status(200).json({
         success: true,
         data: {
-          image,
+          asset,
         },
       });
     } catch (error) {
@@ -73,19 +71,17 @@ class ImageController {
 
   async update(req, res, next) {
     try {
-      const { id } = req.params;
-
-      const image = await imageService.updateImage(
-        id,
+      const asset = await assetService.updateAsset(
+        req.params.id,
         req.user.userId,
-        req.body,
+        req.body
       );
 
       return res.status(200).json({
         success: true,
-        message: "Image updated successfully",
+        message: "Asset updated successfully",
         data: {
-          image,
+          asset,
         },
       });
     } catch (error) {
@@ -95,16 +91,14 @@ class ImageController {
 
   async delete(req, res, next) {
     try {
-      const { id } = req.params;
-
-      await imageService.deleteImage(
-        id,
-        req.user.userId,
+      await assetService.deleteAsset(
+        req.params.id,
+        req.user.userId
       );
 
       return res.status(200).json({
         success: true,
-        message: "Image deleted successfully",
+        message: "Asset deleted successfully",
       });
     } catch (error) {
       next(error);
@@ -112,4 +106,4 @@ class ImageController {
   }
 }
 
-module.exports = new ImageController();
+module.exports = new AssetController();

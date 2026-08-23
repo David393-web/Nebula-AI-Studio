@@ -55,6 +55,23 @@ class AuthController {
     }
   }
 
+  async logout(req, res, next) {
+    try {
+      res.clearCookie("nebula_token", {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: "Logout successful",
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async me(req, res, next) {
     try {
       const user = await authService.getUserById(req.user.userId);

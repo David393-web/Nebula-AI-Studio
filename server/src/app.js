@@ -5,6 +5,11 @@ const morgan = require("morgan");
 const cookieParser = require("cookie-parser");
 
 const authRoutes = require("./routes/auth.routes");
+const projectRoutes = require("./routes/projects.routes");
+const assetRoutes = require("./routes/assets.routes");
+const characterRoutes = require("./routes/characters.routes");
+const imageRoutes = require("./routes/image.routes");
+const galleryRoutes = require("./routes/gallery.routes");
 
 const app = express();
 
@@ -31,6 +36,11 @@ app.use(cookieParser());
 
 // API routes
 app.use("/api/auth", authRoutes);
+app.use("/api/projects", projectRoutes);
+app.use("/api/assets", assetRoutes);
+app.use("/api/characters", characterRoutes);
+app.use("/api/images", imageRoutes);
+app.use("/api/gallery", galleryRoutes);
 
 // Root route
 app.get("/", (req, res) => {
