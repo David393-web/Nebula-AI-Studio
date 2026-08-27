@@ -1,20 +1,49 @@
 const express = require("express");
 
 const imageController = require("../controllers/ImageController");
+
 const { authenticate } = require("../middlewares/auth.middleware");
+
+const {
+  validateCreateImage,
+  validateUpdateImage,
+} = require("../validators/image.validator");
 
 const router = express.Router();
 
+// Authentication for all image routes
 router.use(authenticate);
 
-router.post("/", imageController.create);
+// Create image
+router.post(
+  "/",
+  validateCreateImage,
+  imageController.create
+);
 
-router.get("/", imageController.getAll);
+// Get all images for authenticated user
+router.get(
+  "/",
+  imageController.getAll
+);
 
-router.get("/:id", imageController.getOne);
+// Get single image
+router.get(
+  "/:id",
+  imageController.getOne
+);
 
-router.patch("/:id", imageController.update);
+// Update image
+router.patch(
+  "/:id",
+  validateUpdateImage,
+  imageController.update
+);
 
-router.delete("/:id", imageController.delete);
+// Delete image
+router.delete(
+  "/:id",
+  imageController.delete
+);
 
 module.exports = router;

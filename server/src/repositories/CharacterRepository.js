@@ -12,11 +12,11 @@ class CharacterRepository {
       where: {
         userId,
       },
-      orderBy: {
-        createdAt: "desc",
-      },
       include: {
         project: true,
+      },
+      orderBy: {
+        createdAt: "desc",
       },
     });
   }
@@ -38,6 +38,9 @@ class CharacterRepository {
         id,
       },
       data,
+      include: {
+        project: true,
+      },
     });
   }
 

@@ -1,13 +1,30 @@
+const {
+  validateProjectCreate,
+  validateProjectUpdate,
+} = require("../validators/project.validator");
+
 const projectService = require("../services/Project/project.service");
 
 class ProjectController {
+  // CREATE PROJECT
   async create(req, res, next) {
     try {
-      const { name, description } = req.body;
+      const { isValid, errors } = validateProjectCreate(req.body);
+
+      if (!isValid) {
+        return res.status(400).json({
+          success: false,
+          message: "Validation failed",
+          errors,
+        });
+      }
+
+      const { name, description, status } = req.body;
 
       const project = await projectService.createProject({
         name,
         description,
+        status,
         ownerId: req.user.userId,
       });
 
@@ -23,11 +40,10 @@ class ProjectController {
     }
   }
 
+  // GET ALL PROJECTS
   async getAll(req, res, next) {
     try {
-      const projects = await projectService.getProjects(
-        req.user.userId
-      );
+      const projects = await projectService.getProjects(req.user.userId);
 
       return res.status(200).json({
         success: true,
@@ -40,11 +56,12 @@ class ProjectController {
     }
   }
 
+  // GET ONE PROJECT
   async getOne(req, res, next) {
     try {
       const project = await projectService.getProject(
         req.params.id,
-        req.user.userId
+        req.user.userId,
       );
 
       return res.status(200).json({
@@ -58,12 +75,23 @@ class ProjectController {
     }
   }
 
+  // UPDATE PROJECT
   async update(req, res, next) {
     try {
+      const { isValid, errors } = validateProjectUpdate(req.body);
+
+      if (!isValid) {
+        return res.status(400).json({
+          success: false,
+          message: "Validation failed",
+          errors,
+        });
+      }
+
       const project = await projectService.updateProject(
         req.params.id,
         req.user.userId,
-        req.body
+        req.body,
       );
 
       return res.status(200).json({
@@ -78,12 +106,10 @@ class ProjectController {
     }
   }
 
+  // DELETE PROJECT
   async delete(req, res, next) {
     try {
-      await projectService.deleteProject(
-        req.params.id,
-        req.user.userId
-      );
+      await projectService.deleteProject(req.params.id, req.user.userId);
 
       return res.status(200).json({
         success: true,

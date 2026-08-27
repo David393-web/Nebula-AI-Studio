@@ -1,32 +1,44 @@
-const validateVideoCreate = (data) => {
+const ASSET_TYPES = [
+  "IMAGE",
+  "VIDEO",
+  "CHARACTER",
+  "STORYBOARD",
+  "OTHER",
+];
+
+const validateAssetCreate = (data) => {
   const errors = {};
 
+  // NAME
   if (!data.name) {
-    errors.name = "Video name is required";
+    errors.name = "Asset name is required";
   } else if (typeof data.name !== "string") {
-    errors.name = "Video name must be a string";
+    errors.name = "Asset name must be a string";
   } else if (data.name.trim().length === 0) {
-    errors.name = "Video name cannot be empty";
-  } else if (data.name.trim().length > 255) {
-    errors.name = "Video name must not exceed 255 characters";
+    errors.name = "Asset name cannot be empty";
+  } else if (data.name.trim().length > 100) {
+    errors.name = "Asset name must not exceed 100 characters";
   }
 
+  // TYPE
+  if (!data.type) {
+    errors.type = "Asset type is required";
+  } else if (typeof data.type !== "string") {
+    errors.type = "Asset type must be a string";
+  } else if (!ASSET_TYPES.includes(data.type)) {
+    errors.type = `Asset type must be one of: ${ASSET_TYPES.join(", ")}`;
+  }
+
+  // URL
   if (!data.url) {
-    errors.url = "Video URL is required";
+    errors.url = "Asset URL is required";
   } else if (typeof data.url !== "string") {
-    errors.url = "Video URL must be a string";
+    errors.url = "Asset URL must be a string";
   } else if (data.url.trim().length === 0) {
-    errors.url = "Video URL cannot be empty";
+    errors.url = "Asset URL cannot be empty";
   }
 
-  if (
-    data.prompt !== undefined &&
-    data.prompt !== null &&
-    typeof data.prompt !== "string"
-  ) {
-    errors.prompt = "Video prompt must be a string";
-  }
-
+  // THUMBNAIL URL
   if (
     data.thumbnailUrl !== undefined &&
     data.thumbnailUrl !== null &&
@@ -35,16 +47,7 @@ const validateVideoCreate = (data) => {
     errors.thumbnailUrl = "Thumbnail URL must be a string";
   }
 
-  if (data.duration !== undefined && data.duration !== null) {
-    if (
-      !Number.isInteger(data.duration) ||
-      data.duration < 0
-    ) {
-      errors.duration =
-        "Video duration must be a non-negative integer";
-    }
-  }
-
+  // METADATA
   if (
     data.metadata !== undefined &&
     data.metadata !== null &&
@@ -54,6 +57,7 @@ const validateVideoCreate = (data) => {
     errors.metadata = "Metadata must be a valid object";
   }
 
+  // PROJECT ID
   if (
     data.projectId !== undefined &&
     data.projectId !== null &&
@@ -62,6 +66,7 @@ const validateVideoCreate = (data) => {
     errors.projectId = "Project ID must be a string";
   }
 
+  // FAVORITE
   if (
     data.isFavorite !== undefined &&
     typeof data.isFavorite !== "boolean"
@@ -75,55 +80,46 @@ const validateVideoCreate = (data) => {
   };
 };
 
-const validateVideoUpdate = (data) => {
+const validateAssetUpdate = (data) => {
   const errors = {};
 
-  if (Object.keys(data).length === 0) {
-    errors.video = "At least one field is required for update";
-  }
-
+  // NAME
   if (data.name !== undefined) {
     if (typeof data.name !== "string") {
-      errors.name = "Video name must be a string";
+      errors.name = "Asset name must be a string";
     } else if (data.name.trim().length === 0) {
-      errors.name = "Video name cannot be empty";
-    } else if (data.name.trim().length > 255) {
-      errors.name = "Video name must not exceed 255 characters";
+      errors.name = "Asset name cannot be empty";
+    } else if (data.name.trim().length > 100) {
+      errors.name = "Asset name must not exceed 100 characters";
     }
   }
 
-  if (data.prompt !== undefined && data.prompt !== null) {
-    if (typeof data.prompt !== "string") {
-      errors.prompt = "Video prompt must be a string";
+  // TYPE
+  if (data.type !== undefined) {
+    if (typeof data.type !== "string") {
+      errors.type = "Asset type must be a string";
+    } else if (!ASSET_TYPES.includes(data.type)) {
+      errors.type = `Asset type must be one of: ${ASSET_TYPES.join(", ")}`;
     }
   }
 
+  // URL
   if (data.url !== undefined) {
     if (typeof data.url !== "string") {
-      errors.url = "Video URL must be a string";
+      errors.url = "Asset URL must be a string";
     } else if (data.url.trim().length === 0) {
-      errors.url = "Video URL cannot be empty";
+      errors.url = "Asset URL cannot be empty";
     }
   }
 
-  if (
-    data.thumbnailUrl !== undefined &&
-    data.thumbnailUrl !== null &&
-    typeof data.thumbnailUrl !== "string"
-  ) {
-    errors.thumbnailUrl = "Thumbnail URL must be a string";
-  }
-
-  if (data.duration !== undefined && data.duration !== null) {
-    if (
-      !Number.isInteger(data.duration) ||
-      data.duration < 0
-    ) {
-      errors.duration =
-        "Video duration must be a non-negative integer";
+  // THUMBNAIL URL
+  if (data.thumbnailUrl !== undefined && data.thumbnailUrl !== null) {
+    if (typeof data.thumbnailUrl !== "string") {
+      errors.thumbnailUrl = "Thumbnail URL must be a string";
     }
   }
 
+  // METADATA
   if (data.metadata !== undefined && data.metadata !== null) {
     if (
       typeof data.metadata !== "object" ||
@@ -133,12 +129,14 @@ const validateVideoUpdate = (data) => {
     }
   }
 
+  // PROJECT ID
   if (data.projectId !== undefined && data.projectId !== null) {
     if (typeof data.projectId !== "string") {
       errors.projectId = "Project ID must be a string";
     }
   }
 
+  // FAVORITE
   if (data.isFavorite !== undefined) {
     if (typeof data.isFavorite !== "boolean") {
       errors.isFavorite = "isFavorite must be a boolean";
@@ -152,6 +150,7 @@ const validateVideoUpdate = (data) => {
 };
 
 module.exports = {
-  validateVideoCreate,
-  validateVideoUpdate,
+  ASSET_TYPES,
+  validateAssetCreate,
+  validateAssetUpdate,
 };

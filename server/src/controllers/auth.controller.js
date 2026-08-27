@@ -1,5 +1,10 @@
 const authService = require("../services/Auth/auth.service");
 
+const {
+  validateRegister,
+  validateLogin,
+} = require("../validators/auth.validator");
+
 const cookieOptions = {
   httpOnly: true,
   secure: process.env.NODE_ENV === "production",
@@ -10,6 +15,16 @@ const cookieOptions = {
 class AuthController {
   async register(req, res, next) {
     try {
+      const { isValid, errors } = validateRegister(req.body);
+
+      if (!isValid) {
+        return res.status(400).json({
+          success: false,
+          message: "Validation failed",
+          errors,
+        });
+      }
+
       const { email, password, name } = req.body;
 
       const result = await authService.register({
@@ -34,6 +49,16 @@ class AuthController {
 
   async login(req, res, next) {
     try {
+      const { isValid, errors } = validateLogin(req.body);
+
+      if (!isValid) {
+        return res.status(400).json({
+          success: false,
+          message: "Validation failed",
+          errors,
+        });
+      }
+
       const { email, password } = req.body;
 
       const result = await authService.login({

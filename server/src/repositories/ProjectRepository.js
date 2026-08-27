@@ -1,17 +1,13 @@
-const prisma = require("../database/postgres");
+const prisma = require("../utils/prisma");
 
 class ProjectRepository {
-  async create(data) {
+  async create({ name, description, status, ownerId }) {
     return prisma.project.create({
-      data,
-    });
-  }
-
-  async findById(id) {
-    return prisma.project.findUnique({
-      where: { id },
-      include: {
-        assets: true,
+      data: {
+        name,
+        description,
+        status,
+        ownerId,
       },
     });
   }
@@ -27,16 +23,31 @@ class ProjectRepository {
     });
   }
 
+  async findById(id) {
+    return prisma.project.findUnique({
+      where: {
+        id,
+      },
+      include: {
+        assets: true,
+      },
+    });
+  }
+
   async update(id, data) {
     return prisma.project.update({
-      where: { id },
+      where: {
+        id,
+      },
       data,
     });
   }
 
   async delete(id) {
     return prisma.project.delete({
-      where: { id },
+      where: {
+        id,
+      },
     });
   }
 }

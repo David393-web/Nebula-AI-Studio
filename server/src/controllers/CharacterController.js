@@ -1,8 +1,24 @@
 const characterService = require("../services/Character/character.service");
 
+const {
+  validateCharacterCreate,
+  validateCharacterUpdate,
+} = require("../validators/character.validator");
+
 class CharacterController {
+  // CREATE CHARACTER
   async create(req, res, next) {
     try {
+      const { isValid, errors } = validateCharacterCreate(req.body);
+
+      if (!isValid) {
+        return res.status(400).json({
+          success: false,
+          message: "Validation failed",
+          errors,
+        });
+      }
+
       const {
         name,
         description,
@@ -32,6 +48,7 @@ class CharacterController {
     }
   }
 
+  // GET ALL CHARACTERS
   async getAll(req, res, next) {
     try {
       const characters = await characterService.getCharacters(
@@ -49,6 +66,7 @@ class CharacterController {
     }
   }
 
+  // GET SINGLE CHARACTER
   async getOne(req, res, next) {
     try {
       const character = await characterService.getCharacter(
@@ -67,8 +85,21 @@ class CharacterController {
     }
   }
 
+  // UPDATE CHARACTER
   async update(req, res, next) {
     try {
+      const { isValid, errors } = validateCharacterUpdate(
+        req.body
+      );
+
+      if (!isValid) {
+        return res.status(400).json({
+          success: false,
+          message: "Validation failed",
+          errors,
+        });
+      }
+
       const character = await characterService.updateCharacter(
         req.params.id,
         req.user.userId,
@@ -87,6 +118,7 @@ class CharacterController {
     }
   }
 
+  // DELETE CHARACTER
   async delete(req, res, next) {
     try {
       await characterService.deleteCharacter(

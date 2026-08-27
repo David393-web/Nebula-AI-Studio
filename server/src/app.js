@@ -3,6 +3,7 @@ const cors = require("cors");
 const helmet = require("helmet");
 const morgan = require("morgan");
 const cookieParser = require("cookie-parser");
+const path = require("path");
 
 const authRoutes = require("./routes/auth.routes");
 const projectRoutes = require("./routes/projects.routes");
@@ -10,6 +11,10 @@ const assetRoutes = require("./routes/assets.routes");
 const characterRoutes = require("./routes/characters.routes");
 const imageRoutes = require("./routes/image.routes");
 const galleryRoutes = require("./routes/gallery.routes");
+const storageRoutes = require("./routes/storage.routes");
+const settingsRoutes = require("./routes/settings.routes");
+const videoRoutes = require("./routes/videos.routes");
+const storyboardRoutes = require("./routes/storyboards.routes");
 
 const app = express();
 
@@ -34,6 +39,12 @@ app.use(express.urlencoded({ extended: true }));
 // Cookies
 app.use(cookieParser());
 
+// Static uploaded files
+app.use(
+  "/uploads",
+  express.static(path.join(process.cwd(), "uploads"))
+);
+
 // API routes
 app.use("/api/auth", authRoutes);
 app.use("/api/projects", projectRoutes);
@@ -41,6 +52,10 @@ app.use("/api/assets", assetRoutes);
 app.use("/api/characters", characterRoutes);
 app.use("/api/images", imageRoutes);
 app.use("/api/gallery", galleryRoutes);
+app.use("/api/storage", storageRoutes);
+app.use("/api/settings", settingsRoutes);
+app.use("/api/videos", videoRoutes);
+app.use("/api/storyboards", storyboardRoutes);
 
 // Root route
 app.get("/", (req, res) => {

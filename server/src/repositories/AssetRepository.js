@@ -12,6 +12,24 @@ class AssetRepository {
       where: {
         userId,
       },
+      include: {
+        project: true,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+  }
+
+  async findByProject(projectId, userId) {
+    return prisma.asset.findMany({
+      where: {
+        projectId,
+        userId,
+      },
+      include: {
+        project: true,
+      },
       orderBy: {
         createdAt: "desc",
       },
@@ -19,30 +37,7 @@ class AssetRepository {
   }
 
   async findById(id) {
-    console.log("========== ASSET ID DEBUG ==========");
-
-    console.log("ID FROM URL:", JSON.stringify(id));
-    console.log("URL ID LENGTH:", id.length);
-
-    const assets = await prisma.asset.findMany({
-      select: {
-        id: true,
-        name: true,
-      },
-    });
-
-    console.log("DATABASE ASSETS:");
-
-    assets.forEach((asset) => {
-      console.log({
-        id: JSON.stringify(asset.id),
-        length: asset.id.length,
-        name: asset.name,
-        exactMatch: asset.id === id,
-      });
-    });
-
-    const asset = await prisma.asset.findFirst({
+    return prisma.asset.findUnique({
       where: {
         id,
       },
@@ -50,10 +45,6 @@ class AssetRepository {
         project: true,
       },
     });
-
-    console.log("DIRECT LOOKUP:", asset);
-
-    return asset;
   }
 
   async update(id, data) {
@@ -62,6 +53,9 @@ class AssetRepository {
         id,
       },
       data,
+      include: {
+        project: true,
+      },
     });
   }
 
