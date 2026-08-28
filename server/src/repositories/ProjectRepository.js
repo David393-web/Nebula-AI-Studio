@@ -1,6 +1,7 @@
 const prisma = require("../utils/prisma");
 
 class ProjectRepository {
+  // CREATE PROJECT
   async create({ name, description, status, ownerId }) {
     return prisma.project.create({
       data: {
@@ -12,6 +13,7 @@ class ProjectRepository {
     });
   }
 
+  // GET ALL PROJECTS FOR A USER
   async findByOwner(ownerId) {
     return prisma.project.findMany({
       where: {
@@ -23,10 +25,17 @@ class ProjectRepository {
     });
   }
 
+  // GET ONE PROJECT BY ID
   async findById(id) {
+    const cleanId = String(id).trim();
+
+    console.log("🔍 ProjectRepository.findById");
+    console.log("   ID:", JSON.stringify(cleanId));
+    console.log("   Length:", cleanId.length);
+
     return prisma.project.findUnique({
       where: {
-        id,
+        id: cleanId,
       },
       include: {
         assets: true,
@@ -34,19 +43,25 @@ class ProjectRepository {
     });
   }
 
+  // UPDATE PROJECT
   async update(id, data) {
+    const cleanId = String(id).trim();
+
     return prisma.project.update({
       where: {
-        id,
+        id: cleanId,
       },
       data,
     });
   }
 
+  // DELETE PROJECT
   async delete(id) {
+    const cleanId = String(id).trim();
+
     return prisma.project.delete({
       where: {
-        id,
+        id: cleanId,
       },
     });
   }

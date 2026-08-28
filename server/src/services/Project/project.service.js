@@ -1,6 +1,7 @@
 const projectRepository = require("../../repositories/ProjectRepository");
 
 class ProjectService {
+  // CREATE PROJECT
   async createProject({ name, description, status, ownerId }) {
     if (!name || !name.trim()) {
       const error = new Error("Project name is required");
@@ -8,19 +9,45 @@ class ProjectService {
       throw error;
     }
 
+    if (!ownerId) {
+      const error = new Error("Authentication required");
+      error.status = 401;
+      throw error;
+    }
+
     return projectRepository.create({
       name: name.trim(),
-      description: description || null,
+      description: description?.trim() || null,
       status,
       ownerId,
     });
   }
 
+  // GET ALL PROJECTS
   async getProjects(ownerId) {
+    if (!ownerId) {
+      const error = new Error("Authentication required");
+      error.status = 401;
+      throw error;
+    }
+
     return projectRepository.findByOwner(ownerId);
   }
 
+  // GET ONE PROJECT
   async getProject(id, ownerId) {
+    if (!id) {
+      const error = new Error("Project ID is required");
+      error.status = 400;
+      throw error;
+    }
+
+    if (!ownerId) {
+      const error = new Error("Authentication required");
+      error.status = 401;
+      throw error;
+    }
+
     const project = await projectRepository.findById(id);
 
     if (!project) {
@@ -38,7 +65,20 @@ class ProjectService {
     return project;
   }
 
+  // UPDATE PROJECT
   async updateProject(id, ownerId, data) {
+    if (!id) {
+      const error = new Error("Project ID is required");
+      error.status = 400;
+      throw error;
+    }
+
+    if (!ownerId) {
+      const error = new Error("Authentication required");
+      error.status = 401;
+      throw error;
+    }
+
     const project = await projectRepository.findById(id);
 
     if (!project) {
@@ -56,7 +96,20 @@ class ProjectService {
     return projectRepository.update(id, data);
   }
 
+  // DELETE PROJECT
   async deleteProject(id, ownerId) {
+    if (!id) {
+      const error = new Error("Project ID is required");
+      error.status = 400;
+      throw error;
+    }
+
+    if (!ownerId) {
+      const error = new Error("Authentication required");
+      error.status = 401;
+      throw error;
+    }
+
     const project = await projectRepository.findById(id);
 
     if (!project) {

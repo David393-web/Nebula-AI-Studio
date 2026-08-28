@@ -7,6 +7,18 @@ const adapter = new PrismaPg({
 
 const prisma = new PrismaClient({
   adapter,
+  log: [
+    {
+      emit: "event",
+      level: "query",
+    },
+    {
+      emit: "stdout",
+      level: "error",
+    },
+  ],
 });
+
+prisma.$on("query", (event) => {});
 
 module.exports = prisma;
