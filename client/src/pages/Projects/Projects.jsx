@@ -6,37 +6,34 @@ import {
   Plus,
   Search,
 } from "lucide-react";
-import { useState } from "react";
 
-const projects = [
-  {
-    name: "Nike Campaign",
-    type: "Image + Video",
-    updated: "Updated 2 hours ago",
-    assets: 24,
-  },
-  {
-    name: "Anime Intro",
-    type: "Video",
-    updated: "Updated yesterday",
-    assets: 12,
-  },
-  {
-    name: "AI Short Film",
-    type: "Storyboard",
-    updated: "Updated 2 days ago",
-    assets: 18,
-  },
-  {
-    name: "Product Render",
-    type: "Images",
-    updated: "Updated 4 days ago",
-    assets: 8,
-  },
-];
+import { useEffect, useMemo, useState } from "react";
+import useProjectStore from "../../stores/project/projectStore";
 
 export default function Projects() {
   const [view, setView] = useState("grid");
+  const [search, setSearch] = useState("");
+
+  const {
+    projects,
+    loading,
+    error,
+    fetchProjects,
+  } = useProjectStore();
+
+  // Load projects from backend
+  useEffect(() => {
+    fetchProjects();
+  }, [fetchProjects]);
+
+  // Search projects
+  const filteredProjects = useMemo(() => {
+    return projects.filter((project) =>
+      project.name
+        ?.toLowerCase()
+        .includes(search.toLowerCase())
+    );
+  }, [projects, search]);
 
   return (
     <div className="w-full mx-auto max-w-7xl">
@@ -76,6 +73,8 @@ export default function Projects() {
 
           <input
             type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
             placeholder="Search projects..."
             className="w-full pr-4 text-sm text-white border outline-none h-11 rounded-xl border-zinc-800 bg-zinc-900/60 pl-11 placeholder:text-zinc-600 focus:border-purple-500/50"
           />
@@ -117,88 +116,144 @@ export default function Projects() {
           </h2>
 
           <span className="text-sm text-zinc-600">
-            {projects.length} projects
+            {filteredProjects.length}{" "}
+            {filteredProjects.length === 1
+              ? "project"
+              : "projects"}
           </span>
         </div>
 
-        {view === "grid" ? (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {projects.map((project) => (
-              <div
-                key={project.name}
-                className="overflow-hidden transition border group rounded-2xl border-zinc-800/70 bg-zinc-900/40 hover:border-zinc-700 hover:bg-zinc-900"
-              >
-                {/* Preview */}
-                <div className="relative flex items-center justify-center h-44 bg-zinc-950">
-                  <FolderOpen
-                    size={42}
-                    strokeWidth={1.3}
-                    className="text-purple-400"
-                  />
-
-                  <button
-                    type="button"
-                    className="absolute flex items-center justify-center transition rounded-lg opacity-0 right-3 top-3 h-9 w-9 bg-zinc-900/90 text-zinc-400 group-hover:opacity-100 hover:text-white"
-                  >
-                    <MoreHorizontal size={18} />
-                  </button>
-                </div>
-
-                {/* Details */}
-                <div className="p-4">
-                  <h3 className="font-medium text-white">
-                    {project.name}
-                  </h3>
-
-                  <p className="mt-1 text-xs text-zinc-500">
-                    {project.type}
-                  </p>
-
-                  <div className="flex items-center justify-between mt-4 text-xs text-zinc-600">
-                    <span>{project.updated}</span>
-                    <span>{project.assets} assets</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="overflow-hidden border rounded-2xl border-zinc-800/70 bg-zinc-900/40">
-            {projects.map((project) => (
-              <div
-                key={project.name}
-                className="flex items-center gap-4 px-5 py-4 border-b border-zinc-800/60 last:border-b-0 hover:bg-zinc-900"
-              >
-                <div className="flex items-center justify-center w-10 h-10 text-purple-400 rounded-lg bg-purple-500/10">
-                  <FolderOpen size={19} />
-                </div>
-
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-white">
-                    {project.name}
-                  </p>
-
-                  <p className="mt-1 text-xs text-zinc-500">
-                    {project.type}
-                  </p>
-                </div>
-
-                <span className="hidden text-xs text-zinc-600 sm:block">
-                  {project.updated}
-                </span>
-
-                <span className="hidden text-xs text-zinc-600 md:block">
-                  {project.assets} assets
-                </span>
-
-                <MoreHorizontal
-                  size={18}
-                  className="text-zinc-600"
-                />
-              </div>
-            ))}
+        {/* Loading */}
+        {loading && (
+          <div className="flex items-center justify-center py-20 text-sm text-zinc-500">
+            Loading projects...
           </div>
         )}
+
+        {/* Error */}
+        {!loading && error && (
+          <div className="p-5 text-sm text-red-400 border rounded-2xl border-red-500/20 bg-red-500/10">
+            {error}
+          </div>
+        )}
+
+        {/* Empty state */}
+        {!loading &&
+          !error &&
+          filteredProjects.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-20 border rounded-2xl border-zinc-800/70 bg-zinc-900/40">
+              <FolderOpen
+                size={42}
+                strokeWidth={1.3}
+                className="text-zinc-600"
+              />
+
+              <h3 className="mt-4 font-medium text-white">
+                No projects found
+              </h3>
+
+              <p className="mt-1 text-sm text-zinc-500">
+                Create your first project to get started.
+              </p>
+            </div>
+          )}
+
+        {/* Grid */}
+        {!loading &&
+          !error &&
+          filteredProjects.length > 0 &&
+          view === "grid" && (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {filteredProjects.map((project) => (
+                <div
+                  key={project.id}
+                  className="overflow-hidden transition border group rounded-2xl border-zinc-800/70 bg-zinc-900/40 hover:border-zinc-700 hover:bg-zinc-900"
+                >
+
+                  {/* Preview */}
+                  <div className="relative flex items-center justify-center h-44 bg-zinc-950">
+                    <FolderOpen
+                      size={42}
+                      strokeWidth={1.3}
+                      className="text-purple-400"
+                    />
+
+                    <button
+                      type="button"
+                      className="absolute flex items-center justify-center transition rounded-lg opacity-0 right-3 top-3 h-9 w-9 bg-zinc-900/90 text-zinc-400 group-hover:opacity-100 hover:text-white"
+                    >
+                      <MoreHorizontal size={18} />
+                    </button>
+                  </div>
+
+                  {/* Details */}
+                  <div className="p-4">
+                    <h3 className="font-medium text-white">
+                      {project.name}
+                    </h3>
+
+                    <p className="mt-1 text-xs text-zinc-500">
+                      {project.description ||
+                        "Creative project"}
+                    </p>
+
+                    <div className="flex items-center justify-between mt-4 text-xs text-zinc-600">
+                      <span>
+                        {project.status || "ACTIVE"}
+                      </span>
+
+                      <span>
+                        {project.assets?.length || 0} assets
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+        {/* List */}
+        {!loading &&
+          !error &&
+          filteredProjects.length > 0 &&
+          view === "list" && (
+            <div className="overflow-hidden border rounded-2xl border-zinc-800/70 bg-zinc-900/40">
+              {filteredProjects.map((project) => (
+                <div
+                  key={project.id}
+                  className="flex items-center gap-4 px-5 py-4 border-b border-zinc-800/60 last:border-b-0 hover:bg-zinc-900"
+                >
+                  <div className="flex items-center justify-center w-10 h-10 text-purple-400 rounded-lg bg-purple-500/10">
+                    <FolderOpen size={19} />
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-white">
+                      {project.name}
+                    </p>
+
+                    <p className="mt-1 text-xs text-zinc-500">
+                      {project.description ||
+                        "Creative project"}
+                    </p>
+                  </div>
+
+                  <span className="hidden text-xs text-zinc-600 sm:block">
+                    {project.status || "ACTIVE"}
+                  </span>
+
+                  <span className="hidden text-xs text-zinc-600 md:block">
+                    {project.assets?.length || 0} assets
+                  </span>
+
+                  <MoreHorizontal
+                    size={18}
+                    className="text-zinc-600"
+                  />
+                </div>
+              ))}
+            </div>
+          )}
 
       </section>
     </div>
