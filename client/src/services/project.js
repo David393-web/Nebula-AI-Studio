@@ -1,4 +1,4 @@
-import api from "../config/api";
+import api from "./api";
 
 // GET ALL PROJECTS
 export async function getProjects() {
@@ -18,19 +18,19 @@ export async function getProject(id) {
 export async function createProject(projectData) {
   const response = await api.post("/projects", projectData);
 
-  return response.data?.data?.project;
+  return response.data?.data?.project || null;
 }
 
 // UPDATE PROJECT
 export async function updateProject(id, projectData) {
-  const response = await api.put(`/projects/${id}`, projectData);
+  const response = await api.patch(`/projects/${id}`, projectData);
 
-  return response.data?.data?.project;
+  return response.data?.data?.project || null;
 }
 
 // DELETE PROJECT
 export async function deleteProject(id) {
-  const response = await api.delete(`/projects/${id}`);
+  await api.delete(`/projects/${id}`);
 
-  return response.data;
+  return true;
 }
