@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus, Users } from "lucide-react";
 
 import CharacterGrid from "./CharacterGrid";
@@ -13,40 +13,79 @@ export default function CharactersPanel() {
 
   const {
     characters,
+    loading,
+    error,
+    fetchCharacters,
     addCharacter,
     deleteCharacter,
+    clearError,
   } = useCharacterStore();
 
   const addAsset = useAssetStore(
     (state) => state.addAsset,
   );
 
-  const handleCreateCharacter = (character) => {
-    const characterData = {
-      ...character,
-      type: "character",
-    };
-
-    /*
-     * Keep the character in the Character Store.
-     */
-    addCharacter(characterData);
-
-    /*
-     * Also register the character as a project asset.
-     */
-    addAsset({
-      ...characterData,
-      name:
-        characterData.name ||
-        "Unnamed Character",
+  /*
+   * Load characters from the backend
+   * when the Characters panel opens.
+   */
+  useEffect(() => {
+    fetchCharacters().catch(() => {
+      // Store already handles the error state.
     });
+  }, [fetchCharacters]);
 
-    setIsModalOpen(false);
+  const handleCreateCharacter = async (
+    character,
+  ) => {
+    try {
+      clearError();
+
+      const characterData = {
+        ...character,
+        type: "character",
+      };
+
+      /*
+       * Save the character to the backend.
+       */
+      const createdCharacter =
+        await addCharacter(characterData);
+
+      /*
+       * Also register the created character
+       * as a project asset for the workspace.
+       */
+      if (createdCharacter) {
+        addAsset({
+          ...createdCharacter,
+          name:
+            createdCharacter.name ||
+            "Unnamed Character",
+          type: "character",
+        });
+      }
+
+      setIsModalOpen(false);
+    } catch (error) {
+      console.error(
+        "Failed to create character:",
+        error,
+      );
+    }
   };
 
-  const handleDeleteCharacter = (id) => {
-    deleteCharacter(id);
+  const handleDeleteCharacter = async (id) => {
+    try {
+      clearError();
+
+      await deleteCharacter(id);
+    } catch (error) {
+      console.error(
+        "Failed to delete character:",
+        error,
+      );
+    }
   };
 
   return (
@@ -83,6 +122,21 @@ export default function CharactersPanel() {
         </button>
       </div>
 
+      {/* Error */}
+      {error && (
+        <div className="flex items-center justify-between gap-4 p-4 text-sm text-red-300 border rounded-xl border-red-500/20 bg-red-500/10">
+          <span>{error}</span>
+
+          <button
+            type="button"
+            onClick={clearError}
+            className="text-xs font-medium text-red-200 hover:text-white"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {/* Character Count */}
       <div className="flex items-center justify-between p-4 border rounded-xl border-zinc-800 bg-zinc-900">
         <div>
@@ -103,11 +157,20 @@ export default function CharactersPanel() {
         </span>
       </div>
 
-      {/* Character Grid */}
-      <CharacterGrid
-        characters={characters}
-        onDelete={handleDeleteCharacter}
-      />
+      {/* Loading */}
+      {loading && characters.length === 0 ? (
+        <div className="flex items-center justify-center p-12 border rounded-xl border-zinc-800 bg-zinc-900">
+          <div className="flex items-center gap-3 text-sm text-zinc-400">
+            <div className="w-4 h-4 border-2 rounded-full border-zinc-600 border-t-purple-500 animate-spin" />
+            Loading characters...
+          </div>
+        </div>
+      ) : (
+        <CharacterGrid
+          characters={characters}
+          onDelete={handleDeleteCharacter}
+        />
+      )}
 
       {/* Create Modal */}
       <CreateCharacterModal
@@ -118,5 +181,5 @@ export default function CharactersPanel() {
         onCreate={handleCreateCharacter}
       />
     </div>
-  );
-}
+);
+} 
