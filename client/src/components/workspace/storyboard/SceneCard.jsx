@@ -17,11 +17,58 @@ export default function SceneCard({
   onGenerate,
   selected = false,
 }) {
-  const generatedUrl = scene?.generatedUrl;
+  const generatedUrl =
+    scene?.generatedUrl ||
+    scene?.generatedImageUrl ||
+    scene?.generatedVideoUrl ||
+    null;
+
   const generatedType =
-    scene?.generatedType || scene?.type || "image";
+    scene?.generatedType ||
+    (scene?.generatedVideoUrl ? "video" : null) ||
+    (scene?.generatedImageUrl ? "image" : null) ||
+    scene?.type ||
+    "image";
+
+  const sceneImage =
+    scene?.imageUrl ||
+    scene?.image ||
+    null;
 
   const hasGeneration = Boolean(generatedUrl);
+
+  const characterImage =
+    scene?.character?.image ||
+    scene?.character?.imageUrl ||
+    null;
+
+  const handleDelete = (event) => {
+    event.stopPropagation();
+
+    if (!scene?.id) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Delete "${scene?.title || `Scene ${index + 1}`}"? This action cannot be undone.`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    onDelete?.(scene.id);
+  };
+
+  const handleGenerate = (event) => {
+    event.stopPropagation();
+    onGenerate?.(scene);
+  };
+
+  const handleEdit = (event) => {
+    event.stopPropagation();
+    onEdit?.(scene);
+  };
 
   return (
     <div
@@ -36,6 +83,9 @@ export default function SceneCard({
         type="button"
         onClick={() => onSelect?.(scene)}
         className="block w-full text-left"
+        aria-label={`Select ${
+          scene?.title || `Scene ${index + 1}`
+        }`}
       >
         <div className="relative overflow-hidden aspect-video bg-zinc-950">
           {hasGeneration && generatedType === "video" ? (
@@ -45,8 +95,9 @@ export default function SceneCard({
               muted
               playsInline
               controls
+              preload="metadata"
             />
-          ) : hasGeneration && generatedType === "image" ? (
+          ) : hasGeneration ? (
             <img
               src={generatedUrl}
               alt={
@@ -54,15 +105,17 @@ export default function SceneCard({
                 `Scene ${index + 1}`
               }
               className="object-cover w-full h-full transition duration-300 group-hover:scale-105"
+              loading="lazy"
             />
-          ) : scene?.image ? (
+          ) : sceneImage ? (
             <img
-              src={scene.image}
+              src={sceneImage}
               alt={
                 scene?.title ||
                 `Scene ${index + 1}`
               }
               className="object-cover w-full h-full transition duration-300 group-hover:scale-105"
+              loading="lazy"
             />
           ) : (
             <div className="flex flex-col items-center justify-center w-full h-full text-zinc-600">
@@ -111,11 +164,13 @@ export default function SceneCard({
           <div className="min-w-0">
             <h3 className="font-semibold text-white truncate">
               {scene?.title ||
+                scene?.name ||
                 `Scene ${index + 1}`}
             </h3>
 
             <p className="mt-1 text-xs leading-5 text-zinc-500 line-clamp-2">
               {scene?.prompt ||
+                scene?.description ||
                 "No scene prompt added yet."}
             </p>
           </div>
@@ -123,12 +178,11 @@ export default function SceneCard({
           {/* Edit */}
           <button
             type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              onEdit?.(scene);
-            }}
+            onClick={handleEdit}
             className="flex items-center justify-center flex-shrink-0 w-8 h-8 transition rounded-lg text-zinc-500 hover:text-white hover:bg-zinc-800"
-            aria-label="Edit scene"
+            aria-label={`Edit ${
+              scene?.title || "scene"
+            }`}
           >
             <Pencil size={15} />
           </button>
@@ -138,13 +192,15 @@ export default function SceneCard({
         {scene?.character && (
           <div className="flex items-center gap-2 px-3 py-2 mt-4 border rounded-lg border-purple-500/20 bg-purple-500/5">
             <div className="flex items-center justify-center flex-shrink-0 overflow-hidden rounded-md w-7 h-7 bg-purple-500/10">
-              {scene.character.image ? (
+              {characterImage ? (
                 <img
-                  src={scene.character.image}
+                  src={characterImage}
                   alt={
-                    scene.character.name
+                    scene.character.name ||
+                    "Character"
                   }
                   className="object-cover w-full h-full"
+                  loading="lazy"
                 />
               ) : (
                 <User
@@ -160,7 +216,8 @@ export default function SceneCard({
               </p>
 
               <p className="text-xs font-medium text-purple-400 truncate">
-                {scene.character.name}
+                {scene.character.name ||
+                  "Unnamed Character"}
               </p>
             </div>
           </div>
@@ -193,9 +250,7 @@ export default function SceneCard({
             {/* Generate */}
             <button
               type="button"
-              onClick={() =>
-                onGenerate?.(scene)
-              }
+              onClick={handleGenerate}
               className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-purple-400 transition rounded-lg bg-purple-500/10 hover:bg-purple-500/20 hover:text-purple-300"
             >
               <Sparkles size={13} />
@@ -208,9 +263,7 @@ export default function SceneCard({
             {/* Delete */}
             <button
               type="button"
-              onClick={() =>
-                onDelete?.(scene?.id)
-              }
+              onClick={handleDelete}
               className="flex items-center gap-1.5 text-xs text-zinc-500 transition hover:text-red-400"
             >
               <Trash2 size={14} />

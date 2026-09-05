@@ -9,14 +9,21 @@ import GenerationPreview from "./GenerationPreview";
 import GenerationHistory from "./GenerationHistory";
 import CharacterSelector from "../characters/CharacterSelector";
 
+import { generateAIImage } from "@/api/generationApi";
+
 import useGenerationStore from "@/stores/generation/generationStore";
 import useCharacterStore from "@/stores/characters/characterStore";
 import useAssetStore from "@/stores/assets/assetStore";
 
-export default function GeneratePanel({ scene = null, onGenerationComplete }) {
+export default function GeneratePanel({
+  scene = null,
+  onGenerationComplete,
+}) {
   const [type, setType] = useState(scene?.type || "image");
 
-  const [prompt, setPrompt] = useState(scene?.prompt || "");
+  const [prompt, setPrompt] = useState(
+    scene?.prompt || "",
+  );
 
   const [negativePrompt, setNegativePrompt] = useState("");
 
@@ -26,12 +33,20 @@ export default function GeneratePanel({ scene = null, onGenerationComplete }) {
 
   const [loading, setLoading] = useState(false);
 
-  const { model, ratio, quality } = useGenerationStore();
+  const [error, setError] = useState("");
 
-  const { selectedCharacter, selectCharacter, clearCharacter } =
-    useCharacterStore();
+  const { model, ratio, quality } =
+    useGenerationStore();
 
-  const addAsset = useAssetStore((state) => state.addAsset);
+  const {
+    selectedCharacter,
+    selectCharacter,
+    clearCharacter,
+  } = useCharacterStore();
+
+  const addAsset = useAssetStore(
+    (state) => state.addAsset,
+  );
 
   const handleGenerate = async () => {
     if (!prompt.trim() || loading) {
@@ -39,29 +54,64 @@ export default function GeneratePanel({ scene = null, onGenerationComplete }) {
     }
 
     setLoading(true);
+    setError("");
 
     try {
       /*
-       * Temporary mock generation.
-       *
-       * This will later be replaced with
-       * the real AI generation service.
+       * Currently the connected generation API
+       * supports image generation.
        */
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      if (type !== "image") {
+        throw new Error(
+          "Video generation is not connected yet.",
+        );
+      }
+
+      const generationResponse =
+        await generateAIImage({
+          prompt: prompt.trim(),
+          model,
+          ratio,
+          quality,
+          character: selectedCharacter,
+        });
+
+      /*
+       * Normalize the response so the rest
+       * of the workspace has a consistent
+       * result object.
+       */
+      const generatedUrl =
+        generationResponse?.url ||
+        generationResponse?.imageUrl ||
+        generationResponse?.data?.url ||
+        generationResponse?.data?.imageUrl ||
+        generationResponse?.result?.url ||
+        generationResponse?.result?.imageUrl ||
+        null;
+
+      if (!generatedUrl) {
+        throw new Error(
+          "The generation service did not return an image URL.",
+        );
+      }
 
       const generatedResult = {
-        id: Date.now(),
+        id:
+          generationResponse?.id ||
+          generationResponse?.data?.id ||
+          Date.now(),
 
-        name: scene?.title || `Generated ${type}`,
+        name:
+          scene?.title ||
+          scene?.name ||
+          `Generated Image`,
 
-        type,
+        type: "image",
 
-        url:
-          type === "image"
-            ? `https://picsum.photos/900/700?random=${Date.now()}`
-            : "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
+        url: generatedUrl,
 
-        prompt,
+        prompt: prompt.trim(),
 
         negativePrompt,
 
@@ -71,24 +121,41 @@ export default function GeneratePanel({ scene = null, onGenerationComplete }) {
 
         quality,
 
-        character: selectedCharacter || null,
+        character: selectedCharacter
+          ? {
+              id: selectedCharacter.id,
+              name: selectedCharacter.name,
+              description:
+                selectedCharacter.description || "",
+              image:
+                selectedCharacter.image ||
+                selectedCharacter.imageUrl ||
+                null,
+            }
+          : null,
 
         sceneId: scene?.id || null,
 
-        sceneTitle: scene?.title || null,
+        sceneTitle:
+          scene?.title ||
+          scene?.name ||
+          null,
 
         createdAt: new Date(),
       };
 
       /*
-       * Show the generated result.
+       * Show generated result.
        */
       setResult(generatedResult);
 
       /*
        * Add to generation history.
        */
-      setHistory((current) => [generatedResult, ...current]);
+      setHistory((current) => [
+        generatedResult,
+        ...current,
+      ]);
 
       /*
        * Add generated result to
@@ -96,9 +163,20 @@ export default function GeneratePanel({ scene = null, onGenerationComplete }) {
        */
       addAsset(generatedResult);
 
+      /*
+       * Send result back to ProjectWorkspace.
+       */
       onGenerationComplete?.(generatedResult);
-    } catch (error) {
-      console.error("Generation failed:", error);
+    } catch (generationError) {
+      console.error(
+        "Generation failed:",
+        generationError,
+      );
+
+      setError(
+        generationError?.message ||
+          "Generation failed. Please try again.",
+      );
     } finally {
       setLoading(false);
     }
@@ -115,7 +193,9 @@ export default function GeneratePanel({ scene = null, onGenerationComplete }) {
 
     setPrompt(generation.prompt || "");
 
-    setNegativePrompt(generation.negativePrompt || "");
+    setNegativePrompt(
+      generation.negativePrompt || "",
+    );
 
     /*
      * Restore the character used
@@ -126,14 +206,20 @@ export default function GeneratePanel({ scene = null, onGenerationComplete }) {
     } else {
       clearCharacter();
     }
+
+    setError("");
   };
 
   const handleDeleteGeneration = (id) => {
     setHistory((current) =>
-      current.filter((generation) => generation.id !== id),
+      current.filter(
+        (generation) => generation.id !== id,
+      ),
     );
 
-    setResult((current) => (current?.id === id ? null : current));
+    setResult((current) =>
+      current?.id === id ? null : current,
+    );
   };
 
   return (
@@ -141,13 +227,19 @@ export default function GeneratePanel({ scene = null, onGenerationComplete }) {
       {/* Header */}
       <div>
         <div className="flex items-center gap-2">
-          <Sparkles size={22} className="text-purple-400" />
+          <Sparkles
+            size={22}
+            className="text-purple-400"
+          />
 
-          <h2 className="text-2xl font-semibold text-white">Generate</h2>
+          <h2 className="text-2xl font-semibold text-white">
+            Generate
+          </h2>
         </div>
 
         <p className="mt-1 text-sm text-zinc-500">
-          Create high-quality AI images and videos from your ideas.
+          Create high-quality AI images and videos
+          from your ideas.
         </p>
 
         {/* Storyboard Scene Indicator */}
@@ -155,10 +247,14 @@ export default function GeneratePanel({ scene = null, onGenerationComplete }) {
           <div className="inline-flex items-center gap-2 px-3 py-2 mt-4 text-xs border rounded-lg border-purple-500/20 bg-purple-500/5">
             <ClapperboardIcon />
 
-            <span className="text-zinc-400">Generating scene:</span>
+            <span className="text-zinc-400">
+              Generating scene:
+            </span>
 
             <span className="font-medium text-purple-400">
-              {scene.title || "Untitled Scene"}
+              {scene.title ||
+                scene.name ||
+                "Untitled Scene"}
             </span>
           </div>
         )}
@@ -168,7 +264,10 @@ export default function GeneratePanel({ scene = null, onGenerationComplete }) {
       <div className="flex gap-2 p-1 border w-fit rounded-xl bg-zinc-900 border-zinc-800">
         <button
           type="button"
-          onClick={() => setType("image")}
+          onClick={() => {
+            setType("image");
+            setError("");
+          }}
           className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg transition ${
             type === "image"
               ? "bg-purple-600 text-white"
@@ -181,7 +280,10 @@ export default function GeneratePanel({ scene = null, onGenerationComplete }) {
 
         <button
           type="button"
-          onClick={() => setType("video")}
+          onClick={() => {
+            setType("video");
+            setError("");
+          }}
           className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg transition ${
             type === "video"
               ? "bg-purple-600 text-white"
@@ -192,6 +294,13 @@ export default function GeneratePanel({ scene = null, onGenerationComplete }) {
           Video
         </button>
       </div>
+
+      {/* Generation Error */}
+      {error && (
+        <div className="p-4 text-sm text-red-400 border rounded-xl border-red-500/20 bg-red-500/10">
+          {error}
+        </div>
+      )}
 
       {/* Main Generator */}
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
@@ -204,7 +313,10 @@ export default function GeneratePanel({ scene = null, onGenerationComplete }) {
 
           {/* Prompt */}
           <div className="p-6 border rounded-2xl border-zinc-800 bg-zinc-900">
-            <PromptBox initialPrompt={prompt} onPromptChange={setPrompt} />
+            <PromptBox
+              initialPrompt={prompt}
+              onPromptChange={setPrompt}
+            />
           </div>
 
           {/* Reference Images */}
@@ -214,21 +326,31 @@ export default function GeneratePanel({ scene = null, onGenerationComplete }) {
 
           {/* Negative Prompt */}
           <div className="p-6 border rounded-2xl border-zinc-800 bg-zinc-900">
-            <NegativePrompt onNegativePromptChange={setNegativePrompt} />
+            <NegativePrompt
+              onNegativePromptChange={
+                setNegativePrompt
+              }
+            />
           </div>
 
           {/* Generate Button */}
           <button
             type="button"
             onClick={handleGenerate}
-            disabled={loading || !prompt.trim()}
+            disabled={
+              loading || !prompt.trim()
+            }
             className="flex items-center justify-center w-full gap-2 px-6 py-4 font-medium text-white transition bg-purple-600 rounded-xl hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Sparkles size={18} />
 
             {loading
               ? "Generating..."
-              : `Generate ${type === "image" ? "Image" : "Video"}`}
+              : `Generate ${
+                  type === "image"
+                    ? "Image"
+                    : "Video"
+                }`}
           </button>
         </div>
 

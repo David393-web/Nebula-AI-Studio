@@ -6,6 +6,7 @@ export async function generateAIImage({
   model,
   ratio,
   quality,
+  character = null,
 }) {
   const response = await fetch(API_URL, {
     method: "POST",
@@ -20,11 +21,35 @@ export async function generateAIImage({
       model,
       ratio,
       quality,
+
+      character: character
+        ? {
+            id: character.id,
+            name: character.name,
+            description: character.description || "",
+            image:
+              character.image ||
+              character.imageUrl ||
+              null,
+          }
+        : null,
     }),
   });
 
   if (!response.ok) {
-    throw new Error("Generation failed");
+    let message = "Generation failed";
+
+    try {
+      const errorData = await response.json();
+      message =
+        errorData?.message ||
+        errorData?.error ||
+        message;
+    } catch {
+      // Keep the default error message.
+    }
+
+    throw new Error(message);
   }
 
   return await response.json();

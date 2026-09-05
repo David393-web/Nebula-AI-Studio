@@ -13,11 +13,14 @@ export default function CharactersPanel() {
 
   const {
     characters,
+    selectedCharacter,
     loading,
     error,
     fetchCharacters,
     addCharacter,
     deleteCharacter,
+    selectCharacter,
+    clearCharacter,
     clearError,
   } = useCharacterStore();
 
@@ -25,13 +28,9 @@ export default function CharactersPanel() {
     (state) => state.addAsset,
   );
 
-  /*
-   * Load characters from the backend
-   * when the Characters panel opens.
-   */
   useEffect(() => {
     fetchCharacters().catch(() => {
-      // Store already handles the error state.
+      // Store handles the error state.
     });
   }, [fetchCharacters]);
 
@@ -46,16 +45,9 @@ export default function CharactersPanel() {
         type: "character",
       };
 
-      /*
-       * Save the character to the backend.
-       */
       const createdCharacter =
         await addCharacter(characterData);
 
-      /*
-       * Also register the created character
-       * as a project asset for the workspace.
-       */
       if (createdCharacter) {
         addAsset({
           ...createdCharacter,
@@ -86,6 +78,10 @@ export default function CharactersPanel() {
         error,
       );
     }
+  };
+
+  const handleSelectCharacter = (character) => {
+    selectCharacter(character);
   };
 
   return (
@@ -122,6 +118,54 @@ export default function CharactersPanel() {
         </button>
       </div>
 
+      {/* Selected Character */}
+      {selectedCharacter && (
+        <div className="flex items-center justify-between gap-4 p-4 border rounded-xl border-purple-500/30 bg-purple-500/10">
+          <div className="flex items-center min-w-0 gap-3">
+            <div className="flex items-center justify-center flex-shrink-0 w-10 h-10 overflow-hidden rounded-lg bg-zinc-900">
+              {selectedCharacter.image ||
+              selectedCharacter.imageUrl ? (
+                <img
+                  src={
+                    selectedCharacter.image ||
+                    selectedCharacter.imageUrl
+                  }
+                  alt={
+                    selectedCharacter.name ||
+                    "Selected character"
+                  }
+                  className="object-cover w-full h-full"
+                />
+              ) : (
+                <Users
+                  size={18}
+                  className="text-purple-400"
+                />
+              )}
+            </div>
+
+            <div className="min-w-0">
+              <p className="text-xs text-purple-300">
+                Selected Character
+              </p>
+
+              <p className="font-medium text-white truncate">
+                {selectedCharacter.name ||
+                  "Unnamed Character"}
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={clearCharacter}
+            className="flex-shrink-0 text-xs font-medium transition text-zinc-400 hover:text-white"
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
       {/* Error */}
       {error && (
         <div className="flex items-center justify-between gap-4 p-4 text-sm text-red-300 border rounded-xl border-red-500/20 bg-red-500/10">
@@ -157,7 +201,7 @@ export default function CharactersPanel() {
         </span>
       </div>
 
-      {/* Loading */}
+      {/* Character Grid */}
       {loading && characters.length === 0 ? (
         <div className="flex items-center justify-center p-12 border rounded-xl border-zinc-800 bg-zinc-900">
           <div className="flex items-center gap-3 text-sm text-zinc-400">
@@ -168,6 +212,7 @@ export default function CharactersPanel() {
       ) : (
         <CharacterGrid
           characters={characters}
+          onSelect={handleSelectCharacter}
           onDelete={handleDeleteCharacter}
         />
       )}
@@ -181,5 +226,5 @@ export default function CharactersPanel() {
         onCreate={handleCreateCharacter}
       />
     </div>
-);
-} 
+  );
+}

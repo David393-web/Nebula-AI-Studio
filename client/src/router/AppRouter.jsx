@@ -1,7 +1,6 @@
 import { Routes, Route } from "react-router-dom";
 
 import MainLayout from "@/layouts/MainLayout/MainLayout";
-import { routes } from "./routes";
 
 // Main Pages
 import Dashboard from "@/pages/Dashboard/Dashboard";
@@ -33,46 +32,97 @@ export default function AppRouter() {
     <Routes>
       {/* ========================================
           MAIN APPLICATION
-          All of these use the same Sidebar + Navbar
           ======================================== */}
       <Route element={<MainLayout />}>
-        <Route path={routes.dashboard} element={<Dashboard />} />
+        <Route
+          path="/"
+          element={<Dashboard />}
+        />
 
-        <Route path={routes.projects} element={<Projects />} />
+        <Route
+          path="/projects"
+          element={<Projects />}
+        />
 
-        <Route path="/generate" element={<Generate />} />
+        {/* ----------------------------------------
+            Project Workspace
+            ----------------------------------------
+            This is intentionally explicit.
 
-        <Route path={routes.images} element={<Images />} />
+            Projects navigates to:
+            /projects/:id/workspace
+        ----------------------------------------- */}
+        <Route
+          path="/projects/:id/workspace"
+          element={<ProjectWorkspace />}
+        />
 
-        <Route path={routes.videos} element={<Videos />} />
+        <Route
+          path="/generate"
+          element={<Generate />}
+        />
 
-        <Route path={routes.characters} element={<Characters />} />
+        <Route
+          path="/images"
+          element={<Images />}
+        />
 
-        <Route path={routes.storyboard} element={<Storyboard />} />
+        <Route
+          path="/videos"
+          element={<Videos />}
+        />
 
-        <Route path={routes.gallery} element={<Gallery />} />
+        <Route
+          path="/characters"
+          element={<Characters />}
+        />
 
-        <Route path={routes.downloads} element={<Downloads />} />
+        <Route
+          path="/storyboard"
+          element={<Storyboard />}
+        />
 
-        <Route path={routes.settings} element={<Settings />} />
+        <Route
+          path="/gallery"
+          element={<Gallery />}
+        />
 
-        <Route path={routes.projectWorkspace} element={<ProjectWorkspace />} />
+        <Route
+          path="/downloads"
+          element={<Downloads />}
+        />
+
+        <Route
+          path="/settings"
+          element={<Settings />}
+        />
       </Route>
 
       {/* ========================================
           AUTHENTICATION
-          These do NOT use MainLayout
           ======================================== */}
-      <Route path={routes.login} element={<Login />} />
+      <Route
+        path="/login"
+        element={<Login />}
+      />
 
-      <Route path={routes.register} element={<Register />} />
+      <Route
+        path="/register"
+        element={<Register />}
+      />
 
-      <Route path={routes.forgotPassword} element={<ForgotPassword />} />
+      <Route
+        path="/forgot-password"
+        element={<ForgotPassword />}
+      />
 
       {/* ========================================
           FALLBACK
           ======================================== */}
-      <Route path="*" element={<NotFound />} />
+      <Route
+        path="*"
+        element={<NotFound />}
+      />
     </Routes>
   );
 }

@@ -62,13 +62,22 @@ export default function Projects() {
    * --------------------------------
    * Open Project Workspace
    * --------------------------------
+   *
+   * The workspace route is:
+   *
+   * /projects/:id/workspace
+   *
+   * Therefore, clicking a project must
+   * navigate to the workspace route rather
+   * than /projects/:id.
+   * --------------------------------
    */
   const handleOpenProject = (projectId) => {
     if (!projectId) {
       return;
     }
 
-    navigate(`/projects/${projectId}`);
+    navigate(`/projects/${projectId}/workspace`);
   };
 
   return (

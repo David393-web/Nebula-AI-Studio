@@ -1,12 +1,18 @@
 const storyboardService = require("../services/Storyboard/storyboard.service");
 
 class StoryboardController {
+  /*
+   * ----------------------------------------
+   * Create
+   * ----------------------------------------
+   */
   async create(req, res, next) {
     try {
-      const storyboard = await storyboardService.create(
-        req.user.userId,
-        req.body
-      );
+      const storyboard =
+        await storyboardService.create(
+          req.user.id,
+          req.body,
+        );
 
       return res.status(201).json({
         success: true,
@@ -20,11 +26,17 @@ class StoryboardController {
     }
   }
 
+  /*
+   * ----------------------------------------
+   * Get All
+   * ----------------------------------------
+   */
   async getAll(req, res, next) {
     try {
-      const storyboards = await storyboardService.getAll(
-        req.user.userId
-      );
+      const storyboards =
+        await storyboardService.getAll(
+          req.user.id,
+        );
 
       return res.status(200).json({
         success: true,
@@ -37,12 +49,47 @@ class StoryboardController {
     }
   }
 
+  /*
+   * ----------------------------------------
+   * Get By Project
+   * ----------------------------------------
+   *
+   * GET /api/storyboards/project/:projectId
+   * ----------------------------------------
+   */
+  async getByProject(req, res, next) {
+    try {
+      const { projectId } = req.params;
+
+      const storyboards =
+        await storyboardService.getByProject(
+          req.user.id,
+          projectId,
+        );
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          storyboards,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /*
+   * ----------------------------------------
+   * Get One
+   * ----------------------------------------
+   */
   async getOne(req, res, next) {
     try {
-      const storyboard = await storyboardService.getOne(
-        req.user.userId,
-        req.params.id
-      );
+      const storyboard =
+        await storyboardService.getOne(
+          req.user.id,
+          req.params.id,
+        );
 
       return res.status(200).json({
         success: true,
@@ -55,13 +102,19 @@ class StoryboardController {
     }
   }
 
+  /*
+   * ----------------------------------------
+   * Update
+   * ----------------------------------------
+   */
   async update(req, res, next) {
     try {
-      const storyboard = await storyboardService.update(
-        req.user.userId,
-        req.params.id,
-        req.body
-      );
+      const storyboard =
+        await storyboardService.update(
+          req.user.id,
+          req.params.id,
+          req.body,
+        );
 
       return res.status(200).json({
         success: true,
@@ -75,14 +128,23 @@ class StoryboardController {
     }
   }
 
+  /*
+   * ----------------------------------------
+   * Delete
+   * ----------------------------------------
+   */
   async delete(req, res, next) {
     try {
-      const result = await storyboardService.delete(
-        req.user.userId,
-        req.params.id
-      );
+      const result =
+        await storyboardService.delete(
+          req.user.id,
+          req.params.id,
+        );
 
-      return res.status(200).json(result);
+      return res.status(200).json({
+        success: true,
+        ...result,
+      });
     } catch (error) {
       next(error);
     }

@@ -17,8 +17,9 @@ export default function CharacterGrid({
         </h3>
 
         <p className="max-w-md mt-2 text-sm text-zinc-500">
-          Create your first AI character to reuse them across images,
-          videos, and your creative projects.
+          Create your first AI character to reuse them
+          across images, videos, and your creative
+          projects.
         </p>
       </div>
     );
@@ -26,14 +27,20 @@ export default function CharacterGrid({
 
   return (
     <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-      {characters.map((character) => (
-        <CharacterCard
-          key={character.id}
-          character={character}
-          onSelect={onSelect}
-          onDelete={onDelete}
-        />
-      ))}
+      {characters.map((character) => {
+        if (!character?.id) {
+          return null;
+        }
+
+        return (
+          <CharacterCard
+            key={character.id}
+            character={character}
+            onSelect={onSelect}
+            onDelete={onDelete}
+          />
+        );
+      })}
     </div>
   );
 }

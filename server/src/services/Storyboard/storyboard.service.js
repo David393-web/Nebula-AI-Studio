@@ -24,6 +24,23 @@ class StoryboardService {
     return storyboardRepository.findByUser(userId);
   }
 
+    async getByProject(userId, projectId) {
+    if (!projectId) {
+      const error = new Error(
+        "Project ID is required",
+      );
+
+      error.status = 400;
+
+      throw error;
+    }
+
+    return storyboardRepository.findByProject(
+      projectId,
+      userId,
+    );
+  }
+
   async getOne(userId, storyboardId) {
     if (!userId) {
       const error = new Error("User ID is required");

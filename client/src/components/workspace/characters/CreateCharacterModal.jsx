@@ -1,5 +1,9 @@
 import { useState } from "react";
-import { X, Upload, UserRound } from "lucide-react";
+import {
+  X,
+  Upload,
+  UserRound,
+} from "lucide-react";
 
 export default function CreateCharacterModal({
   isOpen,
@@ -7,28 +11,111 @@ export default function CreateCharacterModal({
   onCreate,
 }) {
   const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
+  const [description, setDescription] =
+    useState("");
   const [image, setImage] = useState("");
+  const [isSubmitting, setIsSubmitting] =
+    useState(false);
+  const [formError, setFormError] =
+    useState("");
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!name.trim()) return;
+    const trimmedName = name.trim();
+    const trimmedDescription =
+      description.trim();
 
-    onCreate?.({
-      id: Date.now(),
-      name: name.trim(),
-      description: description.trim(),
-      image,
-    });
+    if (!trimmedName) {
+      setFormError(
+        "Character name is required.",
+      );
+      return;
+    }
 
-    setName("");
-    setDescription("");
-    setImage("");
+    setFormError("");
+    setIsSubmitting(true);
 
+    try {
+      /*
+       * Do not create an ID here.
+       * The backend/database is responsible
+       * for generating the character ID.
+       */
+      await onCreate?.({
+        name: trimmedName,
+        description: trimmedDescription,
+        image: image || null,
+      });
+
+      /*
+       * Only reset the form after the backend
+       * creation succeeds.
+       */
+      setName("");
+      setDescription("");
+      setImage("");
+      setFormError("");
+
+      onClose?.();
+    } catch (error) {
+      console.error(
+        "Failed to create character:",
+        error,
+      );
+
+      setFormError(
+        error.response?.data?.message ||
+          error.message ||
+          "Failed to create character. Please try again.",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleClose = () => {
+    if (isSubmitting) return;
+
+    setFormError("");
     onClose?.();
+  };
+
+  const handleImageChange = (e) => {
+    const file = e.target.files?.[0];
+
+    if (!file) return;
+
+    const allowedTypes = [
+      "image/png",
+      "image/jpeg",
+      "image/webp",
+    ];
+
+    if (!allowedTypes.includes(file.type)) {
+      setFormError(
+        "Please upload a PNG, JPG, or WEBP image.",
+      );
+      return;
+    }
+
+    setFormError("");
+
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      setImage(reader.result);
+    };
+
+    reader.onerror = () => {
+      setFormError(
+        "Failed to read the selected image.",
+      );
+    };
+
+    reader.readAsDataURL(file);
   };
 
   return (
@@ -48,22 +135,33 @@ export default function CreateCharacterModal({
 
           <button
             type="button"
-            onClick={onClose}
-            className="p-2 transition rounded-lg text-zinc-500 hover:bg-zinc-900 hover:text-white"
+            onClick={handleClose}
+            disabled={isSubmitting}
+            className="p-2 transition rounded-lg text-zinc-500 hover:bg-zinc-900 hover:text-white disabled:pointer-events-none disabled:opacity-50"
           >
             <X size={20} />
           </button>
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+        <form
+          onSubmit={handleSubmit}
+          className="p-6 space-y-5"
+        >
+          {/* Error */}
+          {formError && (
+            <div className="p-3 text-sm text-red-300 border rounded-xl border-red-500/20 bg-red-500/10">
+              {formError}
+            </div>
+          )}
+
           {/* Image */}
           <div>
             <label className="block mb-2 text-sm font-medium text-zinc-300">
               Character Reference
             </label>
 
-            <label className="flex flex-col items-center justify-center w-full h-40 transition border border-dashed cursor-pointer rounded-xl border-zinc-700 bg-zinc-900/50 hover:border-purple-500/50">
+            <label className="flex flex-col items-center justify-center w-full h-40 overflow-hidden transition border border-dashed cursor-pointer rounded-xl border-zinc-700 bg-zinc-900/50 hover:border-purple-500/50">
               {image ? (
                 <img
                   src={image}
@@ -72,7 +170,10 @@ export default function CreateCharacterModal({
                 />
               ) : (
                 <>
-                  <Upload size={24} className="mb-2 text-zinc-500" />
+                  <Upload
+                    size={24}
+                    className="mb-2 text-zinc-500"
+                  />
 
                   <span className="text-sm text-zinc-400">
                     Upload a reference image
@@ -88,19 +189,8 @@ export default function CreateCharacterModal({
                 type="file"
                 accept="image/png,image/jpeg,image/webp"
                 className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-
-                  if (!file) return;
-
-                  const reader = new FileReader();
-
-                  reader.onload = () => {
-                    setImage(reader.result);
-                  };
-
-                  reader.readAsDataURL(file);
-                }}
+                disabled={isSubmitting}
+                onChange={handleImageChange}
               />
             </label>
           </div>
@@ -114,9 +204,12 @@ export default function CreateCharacterModal({
             <input
               type="text"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) =>
+                setName(e.target.value)
+              }
               placeholder="e.g. Amara"
-              className="w-full px-4 py-3 text-sm text-white border outline-none rounded-xl border-zinc-800 bg-zinc-900 placeholder:text-zinc-600 focus:border-purple-500"
+              disabled={isSubmitting}
+              className="w-full px-4 py-3 text-sm text-white border outline-none rounded-xl border-zinc-800 bg-zinc-900 placeholder:text-zinc-600 focus:border-purple-500 disabled:cursor-not-allowed disabled:opacity-60"
               required
             />
           </div>
@@ -129,10 +222,13 @@ export default function CreateCharacterModal({
 
             <textarea
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              onChange={(e) =>
+                setDescription(e.target.value)
+              }
               placeholder="Describe the character's appearance, personality, clothing, age, etc."
               rows={4}
-              className="w-full px-4 py-3 text-sm text-white border outline-none resize-none rounded-xl border-zinc-800 bg-zinc-900 placeholder:text-zinc-600 focus:border-purple-500"
+              disabled={isSubmitting}
+              className="w-full px-4 py-3 text-sm text-white border outline-none resize-none rounded-xl border-zinc-800 bg-zinc-900 placeholder:text-zinc-600 focus:border-purple-500 disabled:cursor-not-allowed disabled:opacity-60"
             />
           </div>
 
@@ -144,8 +240,8 @@ export default function CreateCharacterModal({
             />
 
             <p className="text-xs leading-5 text-zinc-400">
-              Your character can later be reused when generating
-              images and videos.
+              Your character can later be reused
+              when generating images and videos.
             </p>
           </div>
 
@@ -153,17 +249,29 @@ export default function CreateCharacterModal({
           <div className="flex justify-end gap-3 pt-2">
             <button
               type="button"
-              onClick={onClose}
-              className="px-4 py-2.5 text-sm font-medium transition rounded-lg text-zinc-400 hover:bg-zinc-900 hover:text-white"
+              onClick={handleClose}
+              disabled={isSubmitting}
+              className="px-4 py-2.5 text-sm font-medium transition rounded-lg text-zinc-400 hover:bg-zinc-900 hover:text-white disabled:pointer-events-none disabled:opacity-50"
             >
               Cancel
             </button>
 
             <button
               type="submit"
-              className="px-5 py-2.5 text-sm font-medium text-white transition bg-purple-600 rounded-lg hover:bg-purple-500"
+              disabled={
+                isSubmitting ||
+                !name.trim()
+              }
+              className="flex items-center justify-center gap-2 min-w-[150px] px-5 py-2.5 text-sm font-medium text-white transition bg-purple-600 rounded-lg hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Create Character
+              {isSubmitting ? (
+                <>
+                  <span className="w-4 h-4 border-2 rounded-full border-white/30 border-t-white animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                "Create Character"
+              )}
             </button>
           </div>
         </form>
