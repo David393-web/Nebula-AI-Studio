@@ -58,6 +58,12 @@ class AuthService {
   }
 
   async getUserById(id) {
+    if (!id) {
+      const error = new Error("User ID is required");
+      error.status = 400;
+      throw error;
+    }
+
     const user = await userRepository.findById(id);
 
     if (!user) {
@@ -74,8 +80,13 @@ class AuthService {
       throw new Error("JWT_SECRET is not configured");
     }
 
+    if (!user?.id) {
+      throw new Error("Cannot generate authentication token without a user ID");
+    }
+
     return jwt.sign(
       {
+        id: user.id,
         userId: user.id,
         role: user.role,
       },
@@ -87,6 +98,10 @@ class AuthService {
   }
 
   sanitizeUser(user) {
+    if (!user) {
+      return null;
+    }
+
     const { passwordHash, ...safeUser } = user;
 
     return safeUser;

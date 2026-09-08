@@ -3,14 +3,27 @@ const storyboardService = require("../services/Storyboard/storyboard.service");
 class StoryboardController {
   /*
    * ----------------------------------------
-   * Create
+   * Create Storyboard
+   * POST /api/storyboards
    * ----------------------------------------
    */
   async create(req, res, next) {
     try {
+      const userId = req.user?.id;
+
+      if (!userId) {
+        const error = new Error(
+          "Authenticated user could not be identified.",
+        );
+
+        error.status = 401;
+
+        throw error;
+      }
+
       const storyboard =
         await storyboardService.create(
-          req.user.id,
+          userId,
           req.body,
         );
 
@@ -28,15 +41,26 @@ class StoryboardController {
 
   /*
    * ----------------------------------------
-   * Get All
+   * Get All Storyboards
+   * GET /api/storyboards
    * ----------------------------------------
    */
   async getAll(req, res, next) {
     try {
-      const storyboards =
-        await storyboardService.getAll(
-          req.user.id,
+      const userId = req.user?.id;
+
+      if (!userId) {
+        const error = new Error(
+          "Authenticated user could not be identified.",
         );
+
+        error.status = 401;
+
+        throw error;
+      }
+
+      const storyboards =
+        await storyboardService.getAll(userId);
 
       return res.status(200).json({
         success: true,
@@ -51,19 +75,38 @@ class StoryboardController {
 
   /*
    * ----------------------------------------
-   * Get By Project
-   * ----------------------------------------
-   *
+   * Get Storyboards By Project
    * GET /api/storyboards/project/:projectId
    * ----------------------------------------
    */
   async getByProject(req, res, next) {
     try {
+      const userId = req.user?.id;
       const { projectId } = req.params;
+
+      if (!userId) {
+        const error = new Error(
+          "Authenticated user could not be identified.",
+        );
+
+        error.status = 401;
+
+        throw error;
+      }
+
+      if (!projectId) {
+        const error = new Error(
+          "Project ID is required.",
+        );
+
+        error.status = 400;
+
+        throw error;
+      }
 
       const storyboards =
         await storyboardService.getByProject(
-          req.user.id,
+          userId,
           projectId,
         );
 
@@ -80,14 +123,27 @@ class StoryboardController {
 
   /*
    * ----------------------------------------
-   * Get One
+   * Get Single Storyboard
+   * GET /api/storyboards/:id
    * ----------------------------------------
    */
   async getOne(req, res, next) {
     try {
+      const userId = req.user?.id;
+
+      if (!userId) {
+        const error = new Error(
+          "Authenticated user could not be identified.",
+        );
+
+        error.status = 401;
+
+        throw error;
+      }
+
       const storyboard =
         await storyboardService.getOne(
-          req.user.id,
+          userId,
           req.params.id,
         );
 
@@ -104,14 +160,27 @@ class StoryboardController {
 
   /*
    * ----------------------------------------
-   * Update
+   * Update Storyboard
+   * PATCH /api/storyboards/:id
    * ----------------------------------------
    */
   async update(req, res, next) {
     try {
+      const userId = req.user?.id;
+
+      if (!userId) {
+        const error = new Error(
+          "Authenticated user could not be identified.",
+        );
+
+        error.status = 401;
+
+        throw error;
+      }
+
       const storyboard =
         await storyboardService.update(
-          req.user.id,
+          userId,
           req.params.id,
           req.body,
         );
@@ -130,14 +199,27 @@ class StoryboardController {
 
   /*
    * ----------------------------------------
-   * Delete
+   * Delete Storyboard
+   * DELETE /api/storyboards/:id
    * ----------------------------------------
    */
   async delete(req, res, next) {
     try {
+      const userId = req.user?.id;
+
+      if (!userId) {
+        const error = new Error(
+          "Authenticated user could not be identified.",
+        );
+
+        error.status = 401;
+
+        throw error;
+      }
+
       const result =
         await storyboardService.delete(
-          req.user.id,
+          userId,
           req.params.id,
         );
 

@@ -15,12 +15,30 @@ function authenticate(req, res, next) {
       throw new Error("JWT_SECRET is not configured");
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(
+      token,
+      process.env.JWT_SECRET
+    );
 
-    req.user = decoded;
+    const userId = decoded.id || decoded.userId;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Authenticated user could not be identified.",
+      });
+    }
+
+    req.user = {
+      ...decoded,
+      id: userId,
+      userId,
+    };
 
     next();
   } catch (error) {
+    console.error("Authentication error:", error.message);
+
     return res.status(401).json({
       success: false,
       message: "Invalid or expired authentication token",

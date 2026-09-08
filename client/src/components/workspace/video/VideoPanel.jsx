@@ -17,161 +17,30 @@ import VideoPreview from "./VideoPreview";
 
 import api from "@/services/api";
 
-/*
- * --------------------------------
- * Normalize Video
- * --------------------------------
- *
- * Keeps backend video responses in one
- * predictable shape for the UI.
- */
-function normalizeVideo(video, fallbackProjectId = null) {
-  if (!video) {
-    return null;
-  }
-
-  return {
-    ...video,
-
-    id: video.id || null,
-
-    type: video.type || "video",
-
-    url:
-      video.url ||
-      video.videoUrl ||
-      video.outputUrl ||
-      video.generatedUrl ||
-      null,
-
-    aspectRatio:
-      video.aspectRatio ||
-      video.aspect_ratio ||
-      null,
-
-    quality:
-      video.quality ||
-      null,
-
-    duration:
-      video.duration ??
-      null,
-
-    sceneCount:
-      video.sceneCount ??
-      video.scene_count ??
-      null,
-
-    projectId:
-      video.projectId ||
-      video.project_id ||
-      fallbackProjectId ||
-      null,
-
-    createdAt:
-      video.createdAt ||
-      video.created_at ||
-      null,
-
-    updatedAt:
-      video.updatedAt ||
-      video.updated_at ||
-      null,
-  };
-}
-
-/*
- * --------------------------------
- * Extract Videos
- * --------------------------------
- *
- * Handles the response shapes that the
- * backend may return.
- */
-function extractVideos(response) {
-  const data = response?.data?.data;
-
-  if (Array.isArray(data?.videos)) {
-    return data.videos;
-  }
-
-  if (Array.isArray(data)) {
-    return data;
-  }
-
-  if (Array.isArray(response?.data?.videos)) {
-    return response.data.videos;
-  }
-
-  return [];
-}
-
-/*
- * --------------------------------
- * Get Latest Video
- * --------------------------------
- */
-function getLatestVideo(videos) {
-  if (!Array.isArray(videos) || videos.length === 0) {
-    return null;
-  }
-
-  return [...videos]
-    .filter(Boolean)
-    .sort((a, b) => {
-      const dateA = new Date(
-        a?.createdAt ||
-          a?.created_at ||
-          0,
-      ).getTime();
-
-      const dateB = new Date(
-        b?.createdAt ||
-          b?.created_at ||
-          0,
-      ).getTime();
-
-      return dateB - dateA;
-    })[0] || null;
-}
-
 export default function VideoPanel({
   scenes = [],
   projectId,
   onGenerateVideo,
 }) {
-  const [aspectRatio, setAspectRatio] =
-    useState("16:9");
+  const [videoLoading, setVideoLoading] = useState(false);
+  const [videoError, setVideoError] = useState("");
 
-  const [quality, setQuality] =
-    useState("high");
+  const [aspectRatio, setAspectRatio] = useState("16:9");
+  const [quality, setQuality] = useState("high");
+  const [duration, setDuration] = useState("3.5");
 
-  const [duration, setDuration] =
-    useState("auto");
-
-  const [isGenerating, setIsGenerating] =
-    useState(false);
-
-  const [generatedVideo, setGeneratedVideo] =
-    useState(null);
-
-  const [videoLoading, setVideoLoading] =
-    useState(false);
-
-  const [videoError, setVideoError] =
-    useState("");
-
-  const [generationError, setGenerationError] =
-    useState("");
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generatedVideo, setGeneratedVideo] = useState(null);
+  const [generationError, setGenerationError] = useState("");
 
   /*
    * --------------------------------
-   * Load Saved Video
+   * Load Previously Generated Video
    * --------------------------------
    */
   useEffect(() => {
     if (!projectId) {
-      return undefined;
+      return;
     }
 
     let cancelled = false;
@@ -185,77 +54,63 @@ export default function VideoPanel({
           `/videos/project/${projectId}`,
         );
 
-        if (cancelled) {
+        const data = response.data?.data;
+
+        const videos =
+          data?.videos ||
+          data ||
+          [];
+
+        if (
+          cancelled ||
+          !Array.isArray(videos)
+        ) {
           return;
         }
 
-        const videos = extractVideos(response);
-
-        const latestVideo =
-          getLatestVideo(videos);
-
-        if (!latestVideo) {
+        if (videos.length === 0) {
           setGeneratedVideo(null);
           return;
         }
 
-        const normalizedVideo =
-          normalizeVideo(
-            latestVideo,
-            projectId,
-          );
+        const latestVideo = [...videos]
+          .filter(Boolean)
+          .sort(
+            (a, b) =>
+              new Date(b.createdAt || 0) -
+              new Date(a.createdAt || 0),
+          )[0];
 
-        if (!normalizedVideo) {
+        if (!latestVideo) {
           return;
         }
 
-        setGeneratedVideo(
-          normalizedVideo,
-        );
+        const normalizedVideo = {
+          ...latestVideo,
+          id: latestVideo.id,
+          type: "video",
+          url:
+            latestVideo.url ||
+            latestVideo.videoUrl ||
+            latestVideo.outputUrl ||
+            latestVideo.generatedUrl ||
+            null,
+        };
 
-        /*
-         * Restore the settings from the
-         * saved video when available.
-         */
-        if (
-          normalizedVideo.aspectRatio
-        ) {
-          setAspectRatio(
-            normalizedVideo.aspectRatio,
-          );
-        }
-
-        if (normalizedVideo.quality) {
-          setQuality(
-            normalizedVideo.quality,
-          );
-        }
-
-        if (
-          normalizedVideo.duration !==
-            null &&
-          normalizedVideo.duration !==
-            undefined
-        ) {
-          setDuration(
-            normalizedVideo.duration,
-          );
-        }
+        setGeneratedVideo(normalizedVideo);
       } catch (error) {
-        if (cancelled) {
-          return;
-        }
-
         console.error(
           "Failed to load saved video:",
           error,
         );
 
-        setVideoError(
-          error.response?.data?.message ||
-            error.message ||
-            "Failed to load the saved video.",
-        );
+        if (!cancelled) {
+          setVideoError(
+            error.response?.data?.message ||
+              error.message ||
+              "Failed to load the saved video.",
+          );
+        }
       } finally {
         if (!cancelled) {
           setVideoLoading(false);
@@ -272,53 +127,41 @@ export default function VideoPanel({
 
   /*
    * --------------------------------
-   * Generated Scenes
+   * Scene Readiness
    * --------------------------------
    */
   const generatedScenes = useMemo(
     () =>
       scenes.filter(
         (scene) =>
-          Boolean(
-            scene?.generatedUrl ||
-              scene?.image ||
-              scene?.video,
-          ),
+          scene?.generatedUrl ||
+          scene?.image ||
+          scene?.imageUrl ||
+          scene?.video,
       ),
     [scenes],
   );
 
-  /*
-   * --------------------------------
-   * Pending Scenes
-   * --------------------------------
-   */
   const pendingScenes = useMemo(
     () =>
       scenes.filter(
         (scene) =>
           !scene?.generatedUrl &&
           !scene?.image &&
+          !scene?.imageUrl &&
           !scene?.video,
       ),
     [scenes],
   );
 
-  /*
-   * --------------------------------
-   * Characters Used
-   * --------------------------------
-   */
   const usedCharacters = useMemo(() => {
     const characterMap = new Map();
 
     scenes.forEach((scene) => {
-      const character = scene?.character;
-
-      if (character?.id) {
+      if (scene?.character?.id) {
         characterMap.set(
-          character.id,
-          character,
+          scene.character.id,
+          scene.character,
         );
       }
     });
@@ -329,173 +172,123 @@ export default function VideoPanel({
   }, [scenes]);
 
   const sceneCount = scenes.length;
-  const readyCount =
-    generatedScenes.length;
-  const pendingCount =
-    pendingScenes.length;
-
-  const canGenerate =
-    sceneCount > 0 &&
-    pendingCount === 0 &&
-    !isGenerating &&
-    Boolean(projectId);
+  const readyCount = generatedScenes.length;
+  const pendingCount = pendingScenes.length;
 
   /*
    * --------------------------------
-   * Generate Final Video
+   * Generation Eligibility
    * --------------------------------
+   */
+  const canGenerate =
+    sceneCount > 0 &&
+    readyCount > 0 &&
+    Boolean(projectId) &&
+    !isGenerating;
+
+  /*
+   * --------------------------------
+   * Generate Video
+   * --------------------------------
+   *
+   * The current Wan 2.2 integration generates
+   * one video clip from one storyboard image.
+   *
+   * We use the first generated storyboard scene
+   * for this MVP video-generation step.
    */
   const handleGenerateVideo = async () => {
     if (!canGenerate) {
       return;
     }
 
+    const sourceScene =
+      generatedScenes[0];
+
+    if (!sourceScene) {
+      setGenerationError(
+        "A generated storyboard image is required before creating a video.",
+      );
+      return;
+    }
+
+    const imageUrl =
+      sourceScene.generatedUrl ||
+      sourceScene.imageUrl ||
+      sourceScene.image ||
+      null;
+
+    if (!imageUrl) {
+      setGenerationError(
+        "The selected storyboard scene does not contain a usable image.",
+      );
+      return;
+    }
+
+    const videoPrompt =
+      sourceScene.prompt ||
+      sourceScene.description ||
+      sourceScene.title ||
+      sourceScene.name ||
+      "Create a cinematic video from this storyboard scene.";
+
     setIsGenerating(true);
     setGeneratedVideo(null);
     setGenerationError("");
 
     try {
-      const payload = {
-        projectId,
-
-        aspectRatio,
-
-        quality,
-
-        duration,
-
-        sceneCount,
-
-        scenes: scenes.map(
-          (scene, index) => ({
-            id: scene?.id || null,
-
-            order: index + 1,
-
-            title:
-              scene?.title ||
-              scene?.name ||
-              `Scene ${index + 1}`,
-
-            prompt:
-              scene?.prompt ||
-              scene?.description ||
-              "",
-
-            type:
-              scene?.generatedType ||
-              scene?.type ||
-              "image",
-
-            generatedUrl:
-              scene?.generatedUrl ||
-              scene?.image ||
-              scene?.video ||
-              null,
-
-            generatedId:
-              scene?.generatedId ||
-              null,
-
-            character:
-              scene?.character
-                ? {
-                    id:
-                      scene.character
-                        .id || null,
-
-                    name:
-                      scene.character
-                        .name || "",
-
-                    image:
-                      scene.character
-                        .image ||
-                      scene.character
-                        .imageUrl ||
-                      null,
-                  }
-                : null,
-          }),
-        ),
-      };
-
-      /*
-       * The backend creates the Video record.
-       */
       const response = await api.post(
-        "/videos",
-        payload,
+        "/generation/video",
+        {
+          projectId,
+          sceneId:
+            sourceScene.id || null,
+          imageUrl,
+          prompt: videoPrompt,
+          duration:
+            duration === "auto"
+              ? 3.5
+              : Number(duration) || 3.5,
+          aspectRatio,
+          quality,
+        },
       );
 
-      const savedVideo =
-        response.data?.data?.video ||
-        response.data?.video ||
+      const data =
         response.data?.data ||
+        response.data ||
         null;
 
-      if (!savedVideo) {
+      if (!data?.url) {
         throw new Error(
-          "Video generation was requested, but no video record was returned.",
-        );
-      }
-
-      const normalizedVideo =
-        normalizeVideo(
-          savedVideo,
-          projectId,
-        );
-
-      if (!normalizedVideo) {
-        throw new Error(
-          "The video record returned by the server could not be processed.",
+          "Video generation completed but no video URL was returned.",
         );
       }
 
       const result = {
-        ...normalizedVideo,
-
-        id: normalizedVideo.id,
-
-        type:
-          normalizedVideo.type ||
-          "video",
-
-        url:
-          normalizedVideo.url ||
+        ...data,
+        id: data.id || null,
+        type: "video",
+        url: data.url,
+        projectId,
+        sceneId:
+          data.sceneId ||
+          sourceScene.id ||
           null,
-
-        aspectRatio:
-          normalizedVideo.aspectRatio ||
-          aspectRatio,
-
-        quality:
-          normalizedVideo.quality ||
-          quality,
-
+        aspectRatio,
+        quality,
         duration:
-          normalizedVideo.duration ??
-          duration,
-
-        sceneCount:
-          normalizedVideo.sceneCount ??
-          sceneCount,
-
-        projectId:
-          normalizedVideo.projectId ||
-          projectId,
-
+          Number(data.duration) ||
+          Number(duration) ||
+          3.5,
+        sceneCount,
         createdAt:
-          normalizedVideo.createdAt ||
+          data.createdAt ||
           new Date().toISOString(),
       };
 
       setGeneratedVideo(result);
 
-      /*
-       * Tell ProjectWorkspace about the
-       * successfully created video.
-       */
       onGenerateVideo?.(result);
     } catch (error) {
       console.error(
@@ -513,6 +306,49 @@ export default function VideoPanel({
     }
   };
 
+  /*
+   * --------------------------------
+   * Loading State
+   * --------------------------------
+   */
+  if (videoLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="flex items-center gap-3 text-sm text-zinc-500">
+          <span className="w-4 h-4 border-2 rounded-full border-zinc-700 border-t-purple-400 animate-spin" />
+          Loading video workspace...
+        </div>
+      </div>
+    );
+  }
+
+  /*
+   * --------------------------------
+   * Empty State
+   * --------------------------------
+   */
+  if (sceneCount === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center px-6 py-20 text-center border rounded-2xl border-zinc-800 bg-zinc-900/50">
+        <Clapperboard
+          size={42}
+          strokeWidth={1.3}
+          className="text-purple-400"
+        />
+
+        <h2 className="mt-5 text-lg font-semibold text-white">
+          Build your storyboard first
+        </h2>
+
+        <p className="max-w-md mt-2 text-sm leading-6 text-zinc-500">
+          Create storyboard scenes and generate
+          their images before turning them into
+          cinematic video clips.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* --------------------------------
@@ -522,62 +358,26 @@ export default function VideoPanel({
         <div className="flex items-center gap-3">
           <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-purple-500/10">
             <Film
-              size={21}
+              size={20}
               className="text-purple-400"
             />
           </div>
 
           <div>
-            <h2 className="text-2xl font-semibold text-white">
-              Create Video
+            <h2 className="text-xl font-semibold text-white">
+              Video Generation
             </h2>
 
             <p className="mt-1 text-sm text-zinc-500">
-              Turn your generated scenes into
-              a complete AI video.
+              Turn your storyboard imagery into
+              cinematic video.
             </p>
           </div>
         </div>
       </div>
 
       {/* --------------------------------
-          Saved Video Loading
-      --------------------------------- */}
-      {videoLoading && (
-        <div className="flex items-center gap-3 p-4 text-sm border rounded-xl border-zinc-800 bg-zinc-900 text-zinc-500">
-          <span className="w-4 h-4 border-2 rounded-full border-zinc-700 border-t-purple-400 animate-spin" />
-
-          <span>
-            Loading your latest generated
-            video...
-          </span>
-        </div>
-      )}
-
-      {/* --------------------------------
-          Saved Video Error
-      --------------------------------- */}
-      {videoError && (
-        <div className="flex items-start gap-3 p-4 text-sm text-red-400 border rounded-xl border-red-500/20 bg-red-500/5">
-          <AlertCircle
-            size={17}
-            className="flex-shrink-0 mt-0.5"
-          />
-
-          <div>
-            <p className="font-medium">
-              Unable to load saved video
-            </p>
-
-            <p className="mt-1 text-xs leading-5 text-red-400/80">
-              {videoError}
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* --------------------------------
-          Project Readiness
+          Readiness
       --------------------------------- */}
       <div className="grid gap-4 md:grid-cols-3">
         <ReadinessCard
@@ -592,13 +392,10 @@ export default function VideoPanel({
         />
 
         <ReadinessCard
-          icon={CheckCircle2}
+          icon={ImageIcon}
           label="Generated Scenes"
           value={`${readyCount}/${sceneCount}`}
-          ready={
-            sceneCount > 0 &&
-            pendingCount === 0
-          }
+          ready={readyCount > 0}
         />
 
         <ReadinessCard
@@ -612,260 +409,314 @@ export default function VideoPanel({
       </div>
 
       {/* --------------------------------
-          No Storyboard
+          Main Workspace
       --------------------------------- */}
-      {sceneCount === 0 && (
-        <EmptyVideoState />
-      )}
+      <div className="grid gap-6 xl:grid-cols-12 xl:items-start">
 
-      {/* --------------------------------
-          Main Video Workspace
-      --------------------------------- */}
-      {sceneCount > 0 && (
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
-          {/* Left */}
-          <div className="space-y-6">
-            {/* Storyboard Sequence */}
-            <div className="border rounded-2xl border-zinc-800 bg-zinc-900">
-              <div className="flex flex-col gap-3 px-5 py-4 border-b border-zinc-800 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h3 className="font-semibold text-white">
-                    Storyboard Sequence
-                  </h3>
+        {/* Storyboard Sequence */}
+        <div className="border xl:col-span-8 rounded-2xl border-zinc-800 bg-zinc-900">
+          <div className="flex flex-col gap-3 px-5 py-4 border-b border-zinc-800 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="font-semibold text-white">
+                Storyboard Sequence
+              </h3>
 
-                  <p className="mt-1 text-xs text-zinc-500">
-                    Nebula will use this sequence
-                    to create your video.
-                  </p>
-                </div>
-
-                <span
-                  className={`px-2.5 py-1 text-xs font-medium rounded-lg ${
-                    pendingCount === 0
-                      ? "text-emerald-400 bg-emerald-500/10"
-                      : "text-amber-400 bg-amber-500/10"
-                  }`}
-                >
-                  {pendingCount === 0
-                    ? "Ready"
-                    : `${pendingCount} pending`}
-                </span>
-              </div>
-
-              <div className="p-4">
-                <VideoSceneList
-                  scenes={scenes}
-                />
-              </div>
+              <p className="mt-1 text-xs text-zinc-500">
+                These scenes provide the visual foundation for your video.
+              </p>
             </div>
 
-            {/* Characters */}
-            <div className="border rounded-2xl border-zinc-800 bg-zinc-900">
-              <div className="px-5 py-4 border-b border-zinc-800">
-                <h3 className="font-semibold text-white">
-                  Characters in Video
-                </h3>
+            <span
+              className={`px-2.5 py-1 text-xs font-medium rounded-lg ${
+                pendingCount === 0
+                  ? "text-emerald-400 bg-emerald-500/10"
+                  : "text-amber-400 bg-amber-500/10"
+              }`}
+            >
+              {pendingCount === 0
+                ? "Ready"
+                : `${pendingCount} pending`}
+            </span>
+          </div>
 
-                <p className="mt-1 text-xs text-zinc-500">
-                  Characters referenced by your
-                  storyboard scenes.
+          <div className="p-4">
+            <VideoSceneList scenes={scenes} />
+          </div>
+        </div>
+
+        {/* Video Settings */}
+        <div className="xl:col-span-4 xl:row-span-2">
+          <VideoSettings
+            aspectRatio={aspectRatio}
+            quality={quality}
+            duration={duration}
+            onAspectRatioChange={setAspectRatio}
+            onQualityChange={setQuality}
+            onDurationChange={setDuration}
+          />
+        </div>
+
+        {/* Characters */}
+        <div className="border xl:col-span-4 rounded-2xl border-zinc-800 bg-zinc-900">
+          <div className="px-5 py-4 border-b border-zinc-800">
+            <h3 className="font-semibold text-white">
+              Characters in Video
+            </h3>
+
+            <p className="mt-1 text-xs text-zinc-500">
+              Characters referenced by your storyboard scenes.
+            </p>
+          </div>
+
+          <div className="p-5">
+            {usedCharacters.length === 0 ? (
+              <div className="flex items-center gap-3 p-4 border border-dashed rounded-xl border-zinc-800 bg-zinc-950">
+                <Users
+                  size={18}
+                  className="text-zinc-600"
+                />
+
+                <p className="text-xs text-zinc-600">
+                  No reusable characters assigned to these scenes.
                 </p>
               </div>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {usedCharacters.map((character) => (
+                  <div
+                    key={character.id}
+                    className="flex items-center gap-3 p-3 border rounded-xl border-zinc-800 bg-zinc-950"
+                  >
+                    <div className="flex items-center justify-center flex-shrink-0 w-10 h-10 overflow-hidden rounded-lg bg-zinc-900">
+                      {character.imageUrl || character.image ? (
+                        <img
+                          src={
+                            character.imageUrl ||
+                            character.image
+                          }
+                          alt={character.name}
+                          className="object-cover w-full h-full"
+                        />
+                      ) : (
+                        <Users
+                          size={16}
+                          className="text-zinc-600"
+                        />
+                      )}
+                    </div>
 
-              <div className="p-5">
-                {usedCharacters.length ===
-                0 ? (
-                  <div className="flex items-center gap-3 p-4 border border-dashed rounded-xl border-zinc-800 bg-zinc-950">
-                    <Users
-                      size={18}
-                      className="text-zinc-600"
-                    />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-white truncate">
+                        {character.name}
+                      </p>
 
-                    <p className="text-xs text-zinc-600">
-                      No reusable characters
-                      assigned to these scenes.
-                    </p>
+                      <p className="text-[11px] text-zinc-600">
+                        Reusable character
+                      </p>
+                    </div>
                   </div>
-                ) : (
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {usedCharacters.map(
-                      (character) => (
-                        <div
-                          key={character.id}
-                          className="flex items-center gap-3 p-3 border rounded-xl border-zinc-800 bg-zinc-950"
-                        >
-                          <div className="flex items-center justify-center flex-shrink-0 w-10 h-10 overflow-hidden rounded-lg bg-purple-500/10">
-                            {character.image ||
-                            character.imageUrl ? (
-                              <img
-                                src={
-                                  character.image ||
-                                  character.imageUrl
-                                }
-                                alt={
-                                  character.name ||
-                                  "Character"
-                                }
-                                className="object-cover w-full h-full"
-                                loading="lazy"
-                              />
-                            ) : (
-                              <Users
-                                size={17}
-                                className="text-purple-400"
-                              />
-                            )}
-                          </div>
-
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium text-white truncate">
-                              {character.name ||
-                                "Unnamed Character"}
-                            </p>
-
-                            <p className="mt-1 text-[11px] text-zinc-600">
-                              Reusable character
-                            </p>
-                          </div>
-
-                          <CheckCircle2
-                            size={15}
-                            className="flex-shrink-0 ml-auto text-emerald-400"
-                          />
-                        </div>
-                      ),
-                    )}
-                  </div>
-                )}
+                ))}
               </div>
+            )}
+          </div>
+        </div>
+
+        {/* AI Video Generation */}
+        <div className="p-5 border xl:col-span-4 rounded-2xl border-zinc-800 bg-zinc-900">
+          <div className="flex items-start gap-3">
+            <div className="flex items-center justify-center flex-shrink-0 rounded-lg w-9 h-9 bg-purple-500/10">
+              <Sparkles
+                size={17}
+                className="text-purple-400"
+              />
             </div>
 
-            {/* Generation Information */}
-            <div className="p-5 border rounded-2xl border-purple-500/20 bg-purple-500/5">
-              <div className="flex items-start gap-3">
-                <Sparkles
-                  size={18}
-                  className="flex-shrink-0 mt-0.5 text-purple-400"
-                />
+            <div className="min-w-0">
+              <h3 className="text-sm font-semibold text-white">
+                AI Video Generation
+              </h3>
 
-                <div>
-                  <h3 className="text-sm font-medium text-purple-300">
-                    AI Video Generation
-                  </h3>
-
-                  <p className="mt-1 text-xs leading-5 text-zinc-500">
-                    Nebula will use your storyboard
-                    prompts, generated visuals,
-                    characters and selected settings
-                    to create the final video.
-                  </p>
-                </div>
-              </div>
+              <p className="mt-1 text-xs leading-5 text-zinc-500">
+                Nebula will use the first generated storyboard image as
+                the starting frame for the AI video clip.
+              </p>
             </div>
           </div>
 
-          {/* Right */}
-          <div className="space-y-6">
-            <VideoSettings
-              aspectRatio={aspectRatio}
-              onAspectRatioChange={
-                setAspectRatio
-              }
-              quality={quality}
-              onQualityChange={setQuality}
-              duration={duration}
-              onDurationChange={setDuration}
-            />
+          <div className="mt-5">
+            <div className="flex items-center gap-2 mb-3">
+              <Video
+                size={15}
+                className="text-zinc-500"
+              />
 
-            {/* Generate */}
-            <div className="p-5 border rounded-2xl border-zinc-800 bg-zinc-900">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="font-semibold text-white">
-                    Final Generation
-                  </h3>
-
-                  <p className="mt-1 text-xs text-zinc-500">
-                    {pendingCount === 0
-                      ? "Everything is ready."
-                      : "Complete all scenes first."}
-                  </p>
-                </div>
-
-                <Film
-                  size={18}
-                  className="text-purple-400"
-                />
-              </div>
-
-              <button
-                type="button"
-                onClick={
-                  handleGenerateVideo
-                }
-                disabled={!canGenerate}
-                className="flex items-center justify-center w-full gap-2 px-5 py-3.5 text-sm font-medium text-white transition bg-purple-600 rounded-xl hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Sparkles size={17} />
-
-                {isGenerating
-                  ? "Generating Video..."
-                  : "Generate Final Video"}
-              </button>
-
-              {!projectId && (
-                <p className="mt-3 text-[11px] text-red-400">
-                  Project information is
-                  missing.
-                </p>
-              )}
-
-              {generationError && (
-                <div className="flex items-start gap-2 mt-3">
-                  <AlertCircle
-                    size={14}
-                    className="flex-shrink-0 mt-0.5 text-red-400"
-                  />
-
-                  <p className="text-[11px] leading-5 text-red-400">
-                    {generationError}
-                  </p>
-                </div>
-              )}
-
-              {pendingCount > 0 && (
-                <div className="flex items-start gap-2 mt-3">
-                  <AlertCircle
-                    size={14}
-                    className="flex-shrink-0 mt-0.5 text-amber-400"
-                  />
-
-                  <p className="text-[11px] leading-5 text-zinc-600">
-                    Generate all storyboard
-                    scenes before creating the
-                    final video.
-                  </p>
-                </div>
-              )}
+              <span className="text-xs font-medium text-zinc-400">
+                Source Scene
+              </span>
             </div>
 
-            {/* Quick Summary */}
-            <div className="p-5 border rounded-2xl border-zinc-800 bg-zinc-900">
+            {generatedScenes[0] ? (
+              <div className="overflow-hidden border rounded-xl border-zinc-800 bg-zinc-950">
+                <div className="aspect-video bg-zinc-900">
+                  {(
+                    generatedScenes[0].generatedUrl ||
+                    generatedScenes[0].imageUrl ||
+                    generatedScenes[0].image
+                  ) && (
+                    <img
+                      src={
+                        generatedScenes[0].generatedUrl ||
+                        generatedScenes[0].imageUrl ||
+                        generatedScenes[0].image
+                      }
+                      alt={
+                        generatedScenes[0].title ||
+                        generatedScenes[0].name ||
+                        "Storyboard scene"
+                      }
+                      className="object-cover w-full h-full"
+                    />
+                  )}
+                </div>
+
+                <div className="p-3">
+                  <p className="text-sm font-medium text-white truncate">
+                    {generatedScenes[0].title ||
+                      generatedScenes[0].name ||
+                      "Storyboard Scene 1"}
+                  </p>
+
+                  <p className="mt-1 text-[11px] text-zinc-600">
+                    Starting frame
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="p-4 border border-dashed rounded-xl border-zinc-800">
+                <p className="text-xs text-zinc-600">
+                  Generate at least one storyboard image first.
+                </p>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-5">
+            <div className="flex items-start gap-3 p-3 border rounded-xl border-zinc-800 bg-zinc-950">
+              <ArrowRight
+                size={15}
+                className="flex-shrink-0 mt-0.5 text-purple-400"
+              />
+
+              <p className="text-[11px] leading-5 text-zinc-600">
+                Image → motion → cinematic video clip
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Generate Video */}
+        <div className="p-5 border xl:col-span-4 rounded-2xl border-zinc-800 bg-zinc-900">
+          <div className="flex items-start gap-3">
+            <div className="flex items-center justify-center flex-shrink-0 rounded-lg w-9 h-9 bg-purple-500/10">
+              <Film
+                size={17}
+                className="text-purple-400"
+              />
+            </div>
+
+            <div className="min-w-0">
+              <h3 className="text-sm font-semibold text-white">
+                Generate Video
+              </h3>
+
+              <p className="mt-1 text-xs leading-5 text-zinc-500">
+                Create a cinematic video clip from your first generated
+                storyboard image.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 p-3 mt-5 border rounded-xl border-zinc-800 bg-zinc-950">
+            <CheckCircle2
+              size={15}
+              className={
+                canGenerate
+                  ? "text-emerald-400"
+                  : "text-zinc-600"
+              }
+            />
+
+            <p className="text-[11px] text-zinc-500">
+              {canGenerate
+                ? "Ready to generate a video clip."
+                : "Generate a storyboard image before continuing."}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleGenerateVideo}
+            disabled={!canGenerate}
+            className="flex items-center justify-center w-full gap-2 px-5 py-3.5 mt-4 text-sm font-medium text-white transition bg-purple-600 rounded-xl hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Sparkles size={17} />
+
+            {isGenerating
+              ? "Generating Video..."
+              : "Generate Video Clip"}
+          </button>
+
+          {!projectId && (
+            <p className="mt-3 text-[11px] text-red-400">
+              Project information is missing.
+            </p>
+          )}
+
+          {pendingCount > 0 && (
+            <p className="mt-3 text-[11px] leading-5 text-amber-400">
+              {pendingCount} storyboard scene
+              {pendingCount === 1 ? "" : "s"} still need generated
+              imagery. The first completed scene can still be used
+              for this video clip.
+            </p>
+          )}
+
+          {generationError && (
+            <div className="flex items-start gap-2 mt-3">
+              <AlertCircle
+                size={14}
+                className="flex-shrink-0 mt-0.5 text-red-400"
+              />
+
+              <p className="text-[11px] leading-5 text-red-400">
+                {generationError}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Video Summary */}
+        <div className="p-5 border xl:col-span-12 rounded-2xl border-zinc-800 bg-zinc-900">
+          <div className="flex flex-col gap-5">
+            <div>
               <h3 className="text-sm font-semibold text-white">
                 Video Summary
               </h3>
 
-              <div className="mt-4 space-y-3">
+              <div className="grid grid-cols-2 mt-4 gap-x-6 gap-y-4 sm:grid-cols-3">
                 <SummaryRow
                   label="Scenes"
                   value={sceneCount}
                 />
 
                 <SummaryRow
+                  label="Generated"
+                  value={`${readyCount}/${sceneCount}`}
+                />
+
+                <SummaryRow
                   label="Characters"
-                  value={
-                    usedCharacters.length
-                  }
+                  value={usedCharacters.length}
                 />
 
                 <SummaryRow
@@ -886,71 +737,66 @@ export default function VideoPanel({
                   label="Duration"
                   value={
                     duration === "auto"
-                      ? "Automatic"
-                      : duration
+                      ? "3.5 seconds"
+                      : `${duration} seconds`
                   }
                 />
               </div>
             </div>
           </div>
         </div>
-      )}
 
-      {/* --------------------------------
-          Generated Video
-      --------------------------------- */}
-      {generatedVideo && (
-        <div className="border rounded-2xl border-zinc-800 bg-zinc-900">
-          <div className="flex flex-col gap-3 px-5 py-4 border-b border-zinc-800 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <CheckCircle2
-                  size={17}
-                  className="text-emerald-400"
-                />
+        {/* Generated Video */}
+        {generatedVideo && (
+          <div className="border xl:col-span-12 rounded-2xl border-zinc-800 bg-zinc-900">
+            <div className="flex flex-col gap-3 px-5 py-4 border-b border-zinc-800 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle2
+                    size={17}
+                    className="text-emerald-400"
+                  />
 
-                <h3 className="font-semibold text-white">
-                  Video Generated
-                </h3>
-              </div>
-
-              <p className="mt-1 text-xs text-zinc-500">
-                Your complete AI-generated video
-                is ready.
-              </p>
-            </div>
-
-            <span className="px-2.5 py-1 text-xs font-medium rounded-lg text-emerald-400 bg-emerald-500/10">
-              Complete
-            </span>
-          </div>
-
-          <div className="p-5">
-            {generatedVideo.url ? (
-              <VideoPreview
-                video={generatedVideo}
-              />
-            ) : (
-              <div className="flex flex-col items-center justify-center p-10 text-center border border-dashed rounded-xl border-zinc-800">
-                <Video
-                  size={28}
-                  className="text-purple-400"
-                />
-
-                <p className="mt-3 text-sm font-medium text-white">
-                  Video generation completed
-                </p>
+                  <h3 className="font-semibold text-white">
+                    Video Generated
+                  </h3>
+                </div>
 
                 <p className="mt-1 text-xs text-zinc-500">
-                  The video record was created,
-                  but the output URL is not
-                  available yet.
+                  Your AI-generated video clip is ready.
                 </p>
               </div>
-            )}
+
+              <span className="px-2.5 py-1 text-xs font-medium rounded-lg text-emerald-400 bg-emerald-500/10">
+                Complete
+              </span>
+            </div>
+
+            <div className="p-5">
+              {generatedVideo.url ? (
+                <VideoPreview video={generatedVideo} />
+              ) : (
+                <div className="p-5 text-sm text-zinc-500">
+                  Video generated, but the preview URL is unavailable.
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+
+        {videoError && (
+          <div className="flex items-start gap-3 p-4 border xl:col-span-12 rounded-xl border-amber-500/20 bg-amber-500/5">
+            <AlertCircle
+              size={16}
+              className="flex-shrink-0 mt-0.5 text-amber-400"
+            />
+
+            <p className="text-xs leading-5 text-amber-400">
+              {videoError}
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -967,16 +813,16 @@ function ReadinessCard({
   ready,
 }) {
   return (
-    <div className="flex items-center gap-3 p-4 border rounded-xl border-zinc-800 bg-zinc-900">
+    <div className="flex items-center gap-3 p-4 border rounded-2xl border-zinc-800 bg-zinc-900">
       <div
-        className={`flex items-center justify-center flex-shrink-0 w-10 h-10 rounded-xl ${
+        className={`flex items-center justify-center flex-shrink-0 w-9 h-9 rounded-lg ${
           ready
             ? "bg-emerald-500/10"
             : "bg-zinc-800"
         }`}
       >
         <Icon
-          size={18}
+          size={17}
           className={
             ready
               ? "text-emerald-400"
@@ -986,21 +832,14 @@ function ReadinessCard({
       </div>
 
       <div className="min-w-0">
-        <p className="text-xs text-zinc-600">
+        <p className="text-[11px] text-zinc-600">
           {label}
         </p>
 
-        <p className="mt-1 text-sm font-semibold text-white truncate">
+        <p className="mt-0.5 text-sm font-medium text-white">
           {value}
         </p>
       </div>
-
-      {ready && (
-        <CheckCircle2
-          size={15}
-          className="flex-shrink-0 ml-auto text-emerald-400"
-        />
-      )}
     </div>
   );
 }
@@ -1023,56 +862,6 @@ function SummaryRow({
       <span className="text-xs font-medium text-zinc-300">
         {value}
       </span>
-    </div>
-  );
-}
-
-/*
- * --------------------------------
- * Empty Video State
- * --------------------------------
- */
-function EmptyVideoState() {
-  return (
-    <div className="flex flex-col items-center justify-center min-h-[460px] p-8 text-center border border-dashed rounded-2xl border-zinc-800 bg-zinc-900/40">
-      <div className="flex items-center justify-center w-16 h-16 mb-5 rounded-2xl bg-purple-500/10">
-        <Clapperboard
-          size={28}
-          className="text-purple-400"
-        />
-      </div>
-
-      <h3 className="text-xl font-semibold text-white">
-        Build your storyboard first
-      </h3>
-
-      <p className="max-w-md mt-2 text-sm leading-6 text-zinc-500">
-        Your final video is generated from
-        your storyboard scenes. Create and
-        generate at least one scene before
-        coming here.
-      </p>
-
-      <div className="flex items-center gap-2 mt-5 text-xs text-zinc-600">
-        <span className="flex items-center gap-1.5">
-          <Clapperboard size={13} />
-          Storyboard
-        </span>
-
-        <ArrowRight size={13} />
-
-        <span className="flex items-center gap-1.5">
-          <ImageIcon size={13} />
-          Generate
-        </span>
-
-        <ArrowRight size={13} />
-
-        <span className="flex items-center gap-1.5">
-          <Video size={13} />
-          Final Video
-        </span>
-      </div>
     </div>
   );
 }

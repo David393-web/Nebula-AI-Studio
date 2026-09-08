@@ -15,6 +15,8 @@ const storageRoutes = require("./routes/storage.routes");
 const settingsRoutes = require("./routes/settings.routes");
 const videoRoutes = require("./routes/videos.routes");
 const storyboardRoutes = require("./routes/storyboards.routes");
+const generationRoutes = require("./routes/generation.routes");
+const videoGenerationRoutes = require("./routes/videoGeneration.routes");
 
 const app = express();
 
@@ -26,7 +28,7 @@ app.use(
   cors({
     origin: true,
     credentials: true,
-  })
+  }),
 );
 
 // Request logging
@@ -40,10 +42,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
 // Static uploaded files
-app.use(
-  "/uploads",
-  express.static(path.join(process.cwd(), "uploads"))
-);
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 // API routes
 app.use("/api/auth", authRoutes);
@@ -56,6 +55,8 @@ app.use("/api/storage", storageRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/videos", videoRoutes);
 app.use("/api/storyboards", storyboardRoutes);
+app.use("/api/generation", generationRoutes);
+app.use("/api/generation", videoGenerationRoutes);
 
 // Root route
 app.get("/", (req, res) => {

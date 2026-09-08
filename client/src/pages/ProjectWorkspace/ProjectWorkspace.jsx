@@ -701,31 +701,28 @@ export default function ProjectWorkspace() {
     setActiveTab("generate");
   };
 
-/*
- * --------------------------------
- * Video Generation
- * --------------------------------
- *
- * VideoPanel handles the actual video creation
- * and keeps the generated result available for
- * immediate preview.
- *
- * ProjectWorkspace only responds to the successful
- * generation event and keeps the user on the Video tab.
- * --------------------------------
- */
-const handleGenerateVideo = (videoData) => {
-  if (!videoData) {
-    return;
-  }
+  /*
+   * --------------------------------
+   * Video Generation
+   * --------------------------------
+   *
+   * VideoPanel handles the actual video creation
+   * and keeps the generated result available for
+   * immediate preview.
+   *
+   * ProjectWorkspace only responds to the successful
+   * generation event and keeps the user on the Video tab.
+   * --------------------------------
+   */
+  const handleGenerateVideo = (videoData) => {
+    if (!videoData) {
+      return;
+    }
 
-  console.log(
-    "Video generated successfully:",
-    videoData,
-  );
+    console.log("Video generated successfully:", videoData);
 
-  setActiveTab("video");
-};
+    setActiveTab("video");
+  };
 
   /*
    * --------------------------------
@@ -1029,8 +1026,8 @@ const handleGenerateVideo = (videoData) => {
         {activeTab === "video" && (
           <VideoPanel
             scenes={scenes}
-            characters={characters}
             projectId={id}
+            characters={characters}
             onGenerateVideo={handleGenerateVideo}
           />
         )}

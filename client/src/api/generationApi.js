@@ -1,56 +1,52 @@
-const API_URL = import.meta.env.VITE_IMAGE_API_URL;
-const API_KEY = import.meta.env.VITE_IMAGE_API_KEY;
+import api from "@/services/api";
 
 export async function generateAIImage({
   prompt,
   model,
   ratio,
   quality,
-  character = null,
+  sceneId,
 }) {
-  const response = await fetch(API_URL, {
-    method: "POST",
-
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${API_KEY}`,
-    },
-
-    body: JSON.stringify({
-      prompt,
-      model,
-      ratio,
-      quality,
-
-      character: character
-        ? {
-            id: character.id,
-            name: character.name,
-            description: character.description || "",
-            image:
-              character.image ||
-              character.imageUrl ||
-              null,
-          }
-        : null,
-    }),
-  });
-
-  if (!response.ok) {
-    let message = "Generation failed";
-
-    try {
-      const errorData = await response.json();
-      message =
-        errorData?.message ||
-        errorData?.error ||
-        message;
-    } catch {
-      // Keep the default error message.
-    }
-
-    throw new Error(message);
+  if (!prompt || !prompt.trim()) {
+    throw new Error("Image prompt is required.");
   }
 
-  return await response.json();
+  try {
+    const response = await api.post("/generation/image", {
+      prompt: prompt.trim(),
+      model: model || "flux-pro",
+      ratio: ratio || "1:1",
+      quality: quality || "standard",
+      sceneId: sceneId || null,
+    });
+
+    const data = response.data?.data || response.data || null;
+
+    if (!data?.url) {
+      throw new Error(
+        "Image generation completed but no image URL was returned.",
+      );
+    }
+
+    return {
+      id: data.id || null,
+      url: data.url,
+      type: data.type || "image",
+      provider: data.provider || "replicate",
+      model: data.model || model || null,
+      sceneId: data.sceneId || sceneId || null,
+      createdAt: data.createdAt || new Date().toISOString(),
+    };
+  } catch (error) {
+    console.error("Image generation failed:", error);
+
+    const message =
+      error.response?.data?.message ||
+      error.message ||
+      "Image generation failed.";
+
+    throw new Error(message, {
+      cause: error,
+    });
+  }
 }
