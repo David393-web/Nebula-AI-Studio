@@ -66,12 +66,19 @@ class StoryboardRepository {
     });
   }
 
-  async delete(id) {
-    return prisma.storyboard.delete({
+  async delete(id, userId) {
+    const result = await prisma.storyboard.deleteMany({
       where: {
         id,
+        userId,
       },
     });
+
+    if (result.count !== 1) {
+      const error = new Error("Storyboard not found");
+      error.status = 404;
+      throw error;
+    }
   }
 }
 

@@ -13,6 +13,7 @@ export default function SceneCard({
   index,
   onEdit,
   onDelete,
+  onClearGeneration,
   onSelect,
   onGenerate,
   selected = false,
@@ -63,6 +64,22 @@ export default function SceneCard({
   const handleGenerate = (event) => {
     event.stopPropagation();
     onGenerate?.(scene);
+  };
+
+  const handleClearGeneration = (event) => {
+    event.stopPropagation();
+
+    if (!scene?.id) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Remove this generated image? The storyboard scene and its prompt will be kept.",
+    );
+
+    if (confirmed) {
+      onClearGeneration?.(scene.id);
+    }
   };
 
   const handleEdit = (event) => {
@@ -260,6 +277,17 @@ export default function SceneCard({
                 : "Generate"}
             </button>
 
+            {hasGeneration && (
+              <button
+                type="button"
+                onClick={handleClearGeneration}
+                className="flex items-center gap-1.5 text-xs text-zinc-500 transition hover:text-amber-400"
+              >
+                <Trash2 size={14} />
+                Remove image
+              </button>
+            )}
+
             {/* Delete */}
             <button
               type="button"
@@ -267,7 +295,7 @@ export default function SceneCard({
               className="flex items-center gap-1.5 text-xs text-zinc-500 transition hover:text-red-400"
             >
               <Trash2 size={14} />
-              Delete
+              Delete scene
             </button>
           </div>
         </div>

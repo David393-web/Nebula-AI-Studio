@@ -496,6 +496,70 @@ export default function ProjectWorkspace() {
       );
     }
   };
+
+  const handleClearSceneGeneration = async (sceneId) => {
+    const scene = scenes.find((item) => item.id === sceneId);
+
+    if (!scene) {
+      return;
+    }
+
+    setStoryboardError("");
+
+    const metadata = {
+      ...(scene.metadata && typeof scene.metadata === "object"
+        ? scene.metadata
+        : {}),
+      generatedUrl: null,
+      generatedImageUrl: null,
+      generatedVideoUrl: null,
+      generatedType: null,
+      generatedId: null,
+      generatedAt: null,
+    };
+
+    try {
+      const response = await api.patch(`/storyboards/${sceneId}`, {
+        name: scene.name || scene.title || "Untitled Scene",
+        description: scene.description || scene.prompt || null,
+        imageUrl: scene.imageUrl || scene.image || null,
+        projectId: id,
+        scenes: Array.isArray(scene.scenes) ? scene.scenes : null,
+        metadata,
+      });
+      const savedStoryboard =
+        response.data?.data?.storyboard || response.data?.storyboard || null;
+      const clearedScene = savedStoryboard
+        ? normalizeStoryboard(savedStoryboard)
+        : {
+            ...scene,
+            generatedUrl: null,
+            generatedType: null,
+            generatedId: null,
+            generatedAt: null,
+            metadata,
+          };
+
+      setScenes((currentScenes) =>
+        currentScenes.map((item) =>
+          item.id === sceneId ? clearedScene : item,
+        ),
+      );
+      setSelectedScene((currentScene) =>
+        currentScene?.id === sceneId ? clearedScene : currentScene,
+      );
+      setGenerationScene((currentScene) =>
+        currentScene?.id === sceneId ? clearedScene : currentScene,
+      );
+    } catch (error) {
+      console.error("Failed to remove storyboard generation:", error);
+      setStoryboardError(
+        error.response?.data?.message ||
+          error.message ||
+          "Failed to remove the generated storyboard image.",
+      );
+    }
+  };
   /*
    * --------------------------------
    * Scene Selection
@@ -1007,6 +1071,7 @@ export default function ProjectWorkspace() {
                       onSelect={handleSelectScene}
                       onEdit={handleEditScene}
                       onDelete={handleDeleteScene}
+                      onClearGeneration={handleClearSceneGeneration}
                       onGenerate={handleGenerateScene}
                     />
                   ))}
