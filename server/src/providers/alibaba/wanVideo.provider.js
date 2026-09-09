@@ -45,8 +45,52 @@ function sleep(ms) {
   });
 }
 
+async function imageUrlToDataUri(imageUrl) {
+  if (imageUrl.startsWith("data:image/")) {
+    return imageUrl;
+  }
+
+  const response = await fetch(imageUrl);
+
+  if (!response.ok) {
+    throw new Error(
+      `Storyboard image could not be downloaded. HTTP ${response.status}.`,
+    );
+  }
+
+  const contentType = (response.headers.get("content-type") || "")
+    .split(";", 1)[0]
+    .toLowerCase();
+  const supportedTypes = new Set([
+    "image/jpeg",
+    "image/jpg",
+    "image/png",
+    "image/bmp",
+    "image/webp",
+  ]);
+
+  if (!supportedTypes.has(contentType)) {
+    throw new Error(
+      "Storyboard image must be a JPEG, PNG, BMP, or WEBP file.",
+    );
+  }
+
+  const buffer = Buffer.from(await response.arrayBuffer());
+  const maxBytes = 20 * 1024 * 1024;
+
+  if (!buffer.length) {
+    throw new Error("Storyboard image download returned an empty file.");
+  }
+
+  if (buffer.length > maxBytes) {
+    throw new Error("Storyboard image is larger than Wan's 20 MB input limit.");
+  }
+
+  return `data:${contentType};base64,${buffer.toString("base64")}`;
+}
+
 async function createVideoTask({
-  imageUrl,
+  imageData,
   prompt,
   duration,
   resolution,
@@ -67,7 +111,7 @@ async function createVideoTask({
 
         input: {
           prompt: prompt.trim(),
-          img_url: imageUrl,
+          img_url: imageData,
         },
 
         parameters: {
@@ -220,15 +264,16 @@ async function generateVideo({
   console.log("========================================");
   console.log("ALIBABA WAN VIDEO REQUEST");
   console.log("Model:", MODEL);
-  console.log("Image URL:", imageUrl);
   console.log("Prompt:", prompt);
   console.log("Duration:", getDuration(duration));
   console.log("Resolution:", getResolution(resolution));
   console.log("Audio: false");
   console.log("========================================");
 
+  const imageData = await imageUrlToDataUri(imageUrl);
+
   const taskId = await createVideoTask({
-    imageUrl,
+    imageData,
     prompt,
     duration,
     resolution,
