@@ -25,9 +25,8 @@ export default function VideoPanel({
   const [videoLoading, setVideoLoading] = useState(false);
   const [videoError, setVideoError] = useState("");
 
-  const [aspectRatio, setAspectRatio] = useState("16:9");
-  const [quality, setQuality] = useState("high");
-  const [duration, setDuration] = useState("3.5");
+  const [quality, setQuality] = useState("1080P");
+  const [duration, setDuration] = useState("5");
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedVideo, setGeneratedVideo] = useState(null);
@@ -50,21 +49,13 @@ export default function VideoPanel({
       setVideoError("");
 
       try {
-        const response = await api.get(
-          `/videos/project/${projectId}`,
-        );
+        const response = await api.get(`/videos/project/${projectId}`);
 
         const data = response.data?.data;
 
-        const videos =
-          data?.videos ||
-          data ||
-          [];
+        const videos = data?.videos || data || [];
 
-        if (
-          cancelled ||
-          !Array.isArray(videos)
-        ) {
+        if (cancelled || !Array.isArray(videos)) {
           return;
         }
 
@@ -76,9 +67,7 @@ export default function VideoPanel({
         const latestVideo = [...videos]
           .filter(Boolean)
           .sort(
-            (a, b) =>
-              new Date(b.createdAt || 0) -
-              new Date(a.createdAt || 0),
+            (a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0),
           )[0];
 
         if (!latestVideo) {
@@ -99,10 +88,7 @@ export default function VideoPanel({
 
         setGeneratedVideo(normalizedVideo);
       } catch (error) {
-        console.error(
-          "Failed to load saved video:",
-          error,
-        );
+        console.error("Failed to load saved video:", error);
 
         if (!cancelled) {
           setVideoError(
@@ -159,16 +145,11 @@ export default function VideoPanel({
 
     scenes.forEach((scene) => {
       if (scene?.character?.id) {
-        characterMap.set(
-          scene.character.id,
-          scene.character,
-        );
+        characterMap.set(scene.character.id, scene.character);
       }
     });
 
-    return Array.from(
-      characterMap.values(),
-    );
+    return Array.from(characterMap.values());
   }, [scenes]);
 
   const sceneCount = scenes.length;
@@ -181,10 +162,7 @@ export default function VideoPanel({
    * --------------------------------
    */
   const canGenerate =
-    sceneCount > 0 &&
-    readyCount > 0 &&
-    Boolean(projectId) &&
-    !isGenerating;
+    sceneCount > 0 && readyCount > 0 && Boolean(projectId) && !isGenerating;
 
   /*
    * --------------------------------
@@ -202,8 +180,7 @@ export default function VideoPanel({
       return;
     }
 
-    const sourceScene =
-      generatedScenes[0];
+    const sourceScene = generatedScenes[0];
 
     if (!sourceScene) {
       setGenerationError(
@@ -241,23 +218,18 @@ export default function VideoPanel({
         "/generation/video",
         {
           projectId,
-          sceneId:
-            sourceScene.id || null,
+          sceneId: sourceScene.id || null,
           imageUrl,
           prompt: videoPrompt,
-          duration:
-            duration === "auto"
-              ? 3.5
-              : Number(duration) || 3.5,
-          aspectRatio,
+          duration: Number(duration) || 5,
           quality,
+        },
+        {
+          timeout: 360000,
         },
       );
 
-      const data =
-        response.data?.data ||
-        response.data ||
-        null;
+      const data = response.data?.data || response.data || null;
 
       if (!data?.url) {
         throw new Error(
@@ -271,30 +243,18 @@ export default function VideoPanel({
         type: "video",
         url: data.url,
         projectId,
-        sceneId:
-          data.sceneId ||
-          sourceScene.id ||
-          null,
-        aspectRatio,
+        sceneId: data.sceneId || sourceScene.id || null,
         quality,
-        duration:
-          Number(data.duration) ||
-          Number(duration) ||
-          3.5,
+        duration: Number(data.duration) || Number(duration) || 5,
         sceneCount,
-        createdAt:
-          data.createdAt ||
-          new Date().toISOString(),
+        createdAt: data.createdAt || new Date().toISOString(),
       };
 
       setGeneratedVideo(result);
 
       onGenerateVideo?.(result);
     } catch (error) {
-      console.error(
-        "Video generation failed:",
-        error,
-      );
+      console.error("Video generation failed:", error);
 
       setGenerationError(
         error.response?.data?.message ||
@@ -330,20 +290,15 @@ export default function VideoPanel({
   if (sceneCount === 0) {
     return (
       <div className="flex flex-col items-center justify-center px-6 py-20 text-center border rounded-2xl border-zinc-800 bg-zinc-900/50">
-        <Clapperboard
-          size={42}
-          strokeWidth={1.3}
-          className="text-purple-400"
-        />
+        <Clapperboard size={42} strokeWidth={1.3} className="text-purple-400" />
 
         <h2 className="mt-5 text-lg font-semibold text-white">
           Build your storyboard first
         </h2>
 
         <p className="max-w-md mt-2 text-sm leading-6 text-zinc-500">
-          Create storyboard scenes and generate
-          their images before turning them into
-          cinematic video clips.
+          Create storyboard scenes and generate their images before turning them
+          into cinematic video clips.
         </p>
       </div>
     );
@@ -357,10 +312,7 @@ export default function VideoPanel({
       <div>
         <div className="flex items-center gap-3">
           <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-purple-500/10">
-            <Film
-              size={20}
-              className="text-purple-400"
-            />
+            <Film size={20} className="text-purple-400" />
           </div>
 
           <div>
@@ -369,8 +321,7 @@ export default function VideoPanel({
             </h2>
 
             <p className="mt-1 text-sm text-zinc-500">
-              Turn your storyboard imagery into
-              cinematic video.
+              Turn your storyboard imagery into cinematic video.
             </p>
           </div>
         </div>
@@ -383,11 +334,7 @@ export default function VideoPanel({
         <ReadinessCard
           icon={Clapperboard}
           label="Storyboard"
-          value={`${sceneCount} ${
-            sceneCount === 1
-              ? "Scene"
-              : "Scenes"
-          }`}
+          value={`${sceneCount} ${sceneCount === 1 ? "Scene" : "Scenes"}`}
           ready={sceneCount > 0}
         />
 
@@ -402,9 +349,7 @@ export default function VideoPanel({
           icon={Users}
           label="Characters"
           value={usedCharacters.length}
-          ready={
-            usedCharacters.length > 0
-          }
+          ready={usedCharacters.length > 0}
         />
       </div>
 
@@ -412,14 +357,11 @@ export default function VideoPanel({
           Main Workspace
       --------------------------------- */}
       <div className="grid gap-6 xl:grid-cols-12 xl:items-start">
-
         {/* Storyboard Sequence */}
         <div className="border xl:col-span-8 rounded-2xl border-zinc-800 bg-zinc-900">
           <div className="flex flex-col gap-3 px-5 py-4 border-b border-zinc-800 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h3 className="font-semibold text-white">
-                Storyboard Sequence
-              </h3>
+              <h3 className="font-semibold text-white">Storyboard Sequence</h3>
 
               <p className="mt-1 text-xs text-zinc-500">
                 These scenes provide the visual foundation for your video.
@@ -433,9 +375,7 @@ export default function VideoPanel({
                   : "text-amber-400 bg-amber-500/10"
               }`}
             >
-              {pendingCount === 0
-                ? "Ready"
-                : `${pendingCount} pending`}
+              {pendingCount === 0 ? "Ready" : `${pendingCount} pending`}
             </span>
           </div>
 
@@ -447,10 +387,8 @@ export default function VideoPanel({
         {/* Video Settings */}
         <div className="xl:col-span-4 xl:row-span-2">
           <VideoSettings
-            aspectRatio={aspectRatio}
             quality={quality}
             duration={duration}
-            onAspectRatioChange={setAspectRatio}
             onQualityChange={setQuality}
             onDurationChange={setDuration}
           />
@@ -459,9 +397,7 @@ export default function VideoPanel({
         {/* Characters */}
         <div className="border xl:col-span-4 rounded-2xl border-zinc-800 bg-zinc-900">
           <div className="px-5 py-4 border-b border-zinc-800">
-            <h3 className="font-semibold text-white">
-              Characters in Video
-            </h3>
+            <h3 className="font-semibold text-white">Characters in Video</h3>
 
             <p className="mt-1 text-xs text-zinc-500">
               Characters referenced by your storyboard scenes.
@@ -471,10 +407,7 @@ export default function VideoPanel({
           <div className="p-5">
             {usedCharacters.length === 0 ? (
               <div className="flex items-center gap-3 p-4 border border-dashed rounded-xl border-zinc-800 bg-zinc-950">
-                <Users
-                  size={18}
-                  className="text-zinc-600"
-                />
+                <Users size={18} className="text-zinc-600" />
 
                 <p className="text-xs text-zinc-600">
                   No reusable characters assigned to these scenes.
@@ -490,18 +423,12 @@ export default function VideoPanel({
                     <div className="flex items-center justify-center flex-shrink-0 w-10 h-10 overflow-hidden rounded-lg bg-zinc-900">
                       {character.imageUrl || character.image ? (
                         <img
-                          src={
-                            character.imageUrl ||
-                            character.image
-                          }
+                          src={character.imageUrl || character.image}
                           alt={character.name}
                           className="object-cover w-full h-full"
                         />
                       ) : (
-                        <Users
-                          size={16}
-                          className="text-zinc-600"
-                        />
+                        <Users size={16} className="text-zinc-600" />
                       )}
                     </div>
 
@@ -525,10 +452,7 @@ export default function VideoPanel({
         <div className="p-5 border xl:col-span-4 rounded-2xl border-zinc-800 bg-zinc-900">
           <div className="flex items-start gap-3">
             <div className="flex items-center justify-center flex-shrink-0 rounded-lg w-9 h-9 bg-purple-500/10">
-              <Sparkles
-                size={17}
-                className="text-purple-400"
-              />
+              <Sparkles size={17} className="text-purple-400" />
             </div>
 
             <div className="min-w-0">
@@ -537,18 +461,15 @@ export default function VideoPanel({
               </h3>
 
               <p className="mt-1 text-xs leading-5 text-zinc-500">
-                Nebula will use the first generated storyboard image as
-                the starting frame for the AI video clip.
+                Nebula will use the first generated storyboard image as the
+                starting frame for the AI video clip.
               </p>
             </div>
           </div>
 
           <div className="mt-5">
             <div className="flex items-center gap-2 mb-3">
-              <Video
-                size={15}
-                className="text-zinc-500"
-              />
+              <Video size={15} className="text-zinc-500" />
 
               <span className="text-xs font-medium text-zinc-400">
                 Source Scene
@@ -558,11 +479,9 @@ export default function VideoPanel({
             {generatedScenes[0] ? (
               <div className="overflow-hidden border rounded-xl border-zinc-800 bg-zinc-950">
                 <div className="aspect-video bg-zinc-900">
-                  {(
-                    generatedScenes[0].generatedUrl ||
+                  {(generatedScenes[0].generatedUrl ||
                     generatedScenes[0].imageUrl ||
-                    generatedScenes[0].image
-                  ) && (
+                    generatedScenes[0].image) && (
                     <img
                       src={
                         generatedScenes[0].generatedUrl ||
@@ -618,10 +537,7 @@ export default function VideoPanel({
         <div className="p-5 border xl:col-span-4 rounded-2xl border-zinc-800 bg-zinc-900">
           <div className="flex items-start gap-3">
             <div className="flex items-center justify-center flex-shrink-0 rounded-lg w-9 h-9 bg-purple-500/10">
-              <Film
-                size={17}
-                className="text-purple-400"
-              />
+              <Film size={17} className="text-purple-400" />
             </div>
 
             <div className="min-w-0">
@@ -639,11 +555,7 @@ export default function VideoPanel({
           <div className="flex items-center gap-2 p-3 mt-5 border rounded-xl border-zinc-800 bg-zinc-950">
             <CheckCircle2
               size={15}
-              className={
-                canGenerate
-                  ? "text-emerald-400"
-                  : "text-zinc-600"
-              }
+              className={canGenerate ? "text-emerald-400" : "text-zinc-600"}
             />
 
             <p className="text-[11px] text-zinc-500">
@@ -661,9 +573,7 @@ export default function VideoPanel({
           >
             <Sparkles size={17} />
 
-            {isGenerating
-              ? "Generating Video..."
-              : "Generate Video Clip"}
+            {isGenerating ? "Generating Video..." : "Generate Video Clip"}
           </button>
 
           {!projectId && (
@@ -675,9 +585,8 @@ export default function VideoPanel({
           {pendingCount > 0 && (
             <p className="mt-3 text-[11px] leading-5 text-amber-400">
               {pendingCount} storyboard scene
-              {pendingCount === 1 ? "" : "s"} still need generated
-              imagery. The first completed scene can still be used
-              for this video clip.
+              {pendingCount === 1 ? "" : "s"} still need generated imagery. The
+              first completed scene can still be used for this video clip.
             </p>
           )}
 
@@ -704,41 +613,24 @@ export default function VideoPanel({
               </h3>
 
               <div className="grid grid-cols-2 mt-4 gap-x-6 gap-y-4 sm:grid-cols-3">
-                <SummaryRow
-                  label="Scenes"
-                  value={sceneCount}
-                />
+                <SummaryRow label="Scenes" value={sceneCount} />
 
                 <SummaryRow
                   label="Generated"
                   value={`${readyCount}/${sceneCount}`}
                 />
 
-                <SummaryRow
-                  label="Characters"
-                  value={usedCharacters.length}
-                />
+                <SummaryRow label="Characters" value={usedCharacters.length} />
 
                 <SummaryRow
-                  label="Aspect Ratio"
-                  value={aspectRatio}
-                />
-
-                <SummaryRow
-                  label="Quality"
-                  value={
-                    quality === "high"
-                      ? "High"
-                      : quality
-                  }
+                  label="Resolution"
+                  value={quality}
                 />
 
                 <SummaryRow
                   label="Duration"
                   value={
-                    duration === "auto"
-                      ? "3.5 seconds"
-                      : `${duration} seconds`
+                    `${duration} seconds`
                   }
                 />
               </div>
@@ -752,14 +644,9 @@ export default function VideoPanel({
             <div className="flex flex-col gap-3 px-5 py-4 border-b border-zinc-800 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div className="flex items-center gap-2">
-                  <CheckCircle2
-                    size={17}
-                    className="text-emerald-400"
-                  />
+                  <CheckCircle2 size={17} className="text-emerald-400" />
 
-                  <h3 className="font-semibold text-white">
-                    Video Generated
-                  </h3>
+                  <h3 className="font-semibold text-white">Video Generated</h3>
                 </div>
 
                 <p className="mt-1 text-xs text-zinc-500">
@@ -791,9 +678,7 @@ export default function VideoPanel({
               className="flex-shrink-0 mt-0.5 text-amber-400"
             />
 
-            <p className="text-xs leading-5 text-amber-400">
-              {videoError}
-            </p>
+            <p className="text-xs leading-5 text-amber-400">{videoError}</p>
           </div>
         )}
       </div>
@@ -806,39 +691,24 @@ export default function VideoPanel({
  * Readiness Card
  * --------------------------------
  */
-function ReadinessCard({
-  icon: Icon,
-  label,
-  value,
-  ready,
-}) {
+function ReadinessCard({ icon: Icon, label, value, ready }) {
   return (
     <div className="flex items-center gap-3 p-4 border rounded-2xl border-zinc-800 bg-zinc-900">
       <div
         className={`flex items-center justify-center flex-shrink-0 w-9 h-9 rounded-lg ${
-          ready
-            ? "bg-emerald-500/10"
-            : "bg-zinc-800"
+          ready ? "bg-emerald-500/10" : "bg-zinc-800"
         }`}
       >
         <Icon
           size={17}
-          className={
-            ready
-              ? "text-emerald-400"
-              : "text-zinc-500"
-          }
+          className={ready ? "text-emerald-400" : "text-zinc-500"}
         />
       </div>
 
       <div className="min-w-0">
-        <p className="text-[11px] text-zinc-600">
-          {label}
-        </p>
+        <p className="text-[11px] text-zinc-600">{label}</p>
 
-        <p className="mt-0.5 text-sm font-medium text-white">
-          {value}
-        </p>
+        <p className="mt-0.5 text-sm font-medium text-white">{value}</p>
       </div>
     </div>
   );
@@ -849,19 +719,12 @@ function ReadinessCard({
  * Summary Row
  * --------------------------------
  */
-function SummaryRow({
-  label,
-  value,
-}) {
+function SummaryRow({ label, value }) {
   return (
     <div className="flex items-center justify-between gap-4">
-      <span className="text-xs text-zinc-600">
-        {label}
-      </span>
+      <span className="text-xs text-zinc-600">{label}</span>
 
-      <span className="text-xs font-medium text-zinc-300">
-        {value}
-      </span>
+      <span className="text-xs font-medium text-zinc-300">{value}</span>
     </div>
   );
 }

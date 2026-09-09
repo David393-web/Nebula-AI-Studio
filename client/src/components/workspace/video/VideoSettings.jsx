@@ -1,78 +1,39 @@
-import {
-  Monitor,
-  Sparkles,
-  Clock3,
-} from "lucide-react";
+import { Sparkles, Clock3 } from "lucide-react";
 
 export default function VideoSettings({
-  aspectRatio = "16:9",
-  onAspectRatioChange,
-  quality = "high",
+  quality = "1080P",
   onQualityChange,
-  duration = "auto",
+  duration = "5",
   onDurationChange,
 }) {
-  const aspectRatios = [
-    {
-      value: "16:9",
-      label: "16:9",
-      description: "Landscape",
-    },
-    {
-      value: "9:16",
-      label: "9:16",
-      description: "Portrait",
-    },
-    {
-      value: "1:1",
-      label: "1:1",
-      description: "Square",
-    },
-    {
-      value: "4:5",
-      label: "4:5",
-      description: "Social",
-    },
-  ];
-
   const qualities = [
     {
-      value: "standard",
-      label: "Standard",
-      description: "Faster generation",
+      value: "720P",
+      label: "720P",
+      description: "Lower cost",
     },
     {
-      value: "high",
-      label: "High",
-      description: "Best balance",
-    },
-    {
-      value: "ultra",
-      label: "Ultra",
-      description: "Maximum quality",
+      value: "1080P",
+      label: "1080P",
+      description: "Higher detail",
     },
   ];
 
   const durations = [
     {
-      value: "auto",
-      label: "Automatic",
-      description: "Based on scenes",
+      value: "5",
+      label: "5 seconds",
+      description: "Quick clip",
     },
     {
-      value: "15s",
+      value: "10",
+      label: "10 seconds",
+      description: "Standard clip",
+    },
+    {
+      value: "15",
       label: "15 seconds",
-      description: "Short video",
-    },
-    {
-      value: "30s",
-      label: "30 seconds",
-      description: "Standard",
-    },
-    {
-      value: "60s",
-      label: "60 seconds",
-      description: "Long video",
+      description: "Longest available",
     },
   ];
 
@@ -99,58 +60,6 @@ export default function VideoSettings({
       </div>
 
       <div className="p-5 space-y-6">
-        {/* Aspect Ratio */}
-        <div>
-          <div className="flex items-center gap-2 mb-3">
-            <Monitor
-              size={15}
-              className="text-zinc-500"
-            />
-
-            <label className="text-xs font-medium text-zinc-300">
-              Aspect Ratio
-            </label>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            {aspectRatios.map((option) => {
-              const active =
-                aspectRatio === option.value;
-
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() =>
-                    onAspectRatioChange?.(
-                      option.value,
-                    )
-                  }
-                  className={`p-3 text-left transition border rounded-xl ${
-                    active
-                      ? "border-purple-500 bg-purple-500/10"
-                      : "border-zinc-800 bg-zinc-950 hover:border-zinc-700"
-                  }`}
-                >
-                  <div
-                    className={`text-sm font-medium ${
-                      active
-                        ? "text-purple-300"
-                        : "text-white"
-                    }`}
-                  >
-                    {option.label}
-                  </div>
-
-                  <div className="mt-1 text-[10px] text-zinc-600">
-                    {option.description}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
         {/* Quality */}
         <div>
           <div className="flex items-center gap-2 mb-3">
@@ -286,9 +195,8 @@ export default function VideoSettings({
         {/* Info */}
         <div className="p-3 border rounded-xl border-purple-500/10 bg-purple-500/5">
           <p className="text-[11px] leading-5 text-zinc-500">
-            Higher quality may increase generation time.
-            Automatic duration will adapt to the number
-            and length of your storyboard scenes.
+            Wan preserves the aspect ratio of the source storyboard image.
+            Higher resolutions and longer clips may increase generation time.
           </p>
         </div>
       </div>

@@ -1,55 +1,98 @@
-export default function VideoPreview({
-  video,
-  loading = false,
-  className = "",
-}) {
+import { useMemo, useState } from "react";
+import { AlertCircle, Play } from "lucide-react";
+
+export default function VideoPreview({ video }) {
+  const [hasError, setHasError] = useState(false);
+
+  const videoUrl = useMemo(() => {
+    if (!video) {
+      return null;
+    }
+
+    return (
+      video.url ||
+      video.videoUrl ||
+      video.outputUrl ||
+      video.generatedUrl ||
+      null
+    );
+  }, [video]);
+
+  if (!videoUrl) {
+    return (
+      <div className="flex items-center justify-center min-h-[420px] rounded-2xl border border-dashed border-zinc-800 bg-zinc-950">
+        <div className="text-center">
+          <AlertCircle
+            size={28}
+            className="mx-auto mb-3 text-zinc-600"
+          />
+
+          <p className="text-sm text-zinc-400">
+            Video preview is unavailable.
+          </p>
+
+          <p className="mt-1 text-xs text-zinc-600">
+            No video URL was returned.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (hasError) {
+    return (
+      <div className="flex items-center justify-center min-h-[420px] rounded-2xl border border-red-900/40 bg-zinc-950">
+        <div className="max-w-md px-6 text-center">
+          <AlertCircle
+            size={30}
+            className="mx-auto mb-3 text-red-400"
+          />
+
+          <p className="text-sm font-medium text-zinc-200">
+            Video could not be played
+          </p>
+
+          <p className="mt-2 text-xs leading-5 text-zinc-500">
+            The video was generated successfully, but the browser
+            could not load the returned video file.
+          </p>
+
+          <button
+            type="button"
+            onClick={() => {
+              setHasError(false);
+            }}
+            className="px-4 py-2 mt-4 text-xs font-medium text-white transition rounded-lg bg-violet-600 hover:bg-violet-500"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div
-      className={`relative overflow-hidden border rounded-2xl border-zinc-800 bg-zinc-950 ${className}`}
-    >
-      {loading ? (
-        <div className="flex flex-col items-center justify-center min-h-[320px]">
-          <div className="w-10 h-10 border-2 border-purple-500 rounded-full border-t-transparent animate-spin" />
+    <div className="relative overflow-hidden bg-black border rounded-2xl border-zinc-800">
+      <video
+        key={videoUrl}
+        src={videoUrl}
+        controls
+        playsInline
+        preload="metadata"
+        className="block w-full h-auto max-h-[680px] bg-black"
+        onError={() => {
+          setHasError(true);
+        }}
+      >
+        Your browser does not support HTML5 video.
+      </video>
 
-          <p className="mt-4 text-sm text-zinc-400">
-            Preparing video...
-          </p>
+      <div className="absolute pointer-events-none top-3 left-3">
+        <div className="flex items-center gap-2 px-3 py-1.5 text-[11px] font-medium text-white rounded-full bg-black/70 backdrop-blur-sm">
+          <Play size={11} fill="currentColor" />
+          AI Generated
         </div>
-      ) : video ? (
-        <video
-          src={video}
-          controls
-          className="object-contain w-full min-h-[320px] bg-black"
-        />
-      ) : (
-        <div className="flex flex-col items-center justify-center min-h-[320px] px-6 text-center">
-          <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-purple-500/10">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="26"
-              height="26"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="text-purple-400"
-            >
-              <polygon points="5 3 19 12 5 21 5 3" />
-            </svg>
-          </div>
-
-          <h3 className="mt-4 text-sm font-semibold text-white">
-            No video generated yet
-          </h3>
-
-          <p className="max-w-sm mt-2 text-xs leading-5 text-zinc-500">
-            Generate a video from your selected scenes and
-            the finished result will appear here.
-          </p>
-        </div>
-      )}
+      </div>
     </div>
   );
 }

@@ -1,42 +1,25 @@
-const ltxVideoProvider = require(
-  "../../providers/huggingface/wanVideoSpace.provider",
-);
+const wanVideoProvider = require("../../providers/alibaba/wanVideo.provider");
 
 class VideoGenerationService {
-  async generate({
-    userId,
-    imageUrl,
-    prompt,
-    duration,
-    aspectRatio,
-  }) {
+  async generate({ userId, imageUrl, prompt, duration, quality }) {
     if (!userId) {
-      throw new Error(
-        "Authenticated user is required.",
-      );
+      throw new Error("Authenticated user is required.");
     }
 
     if (!imageUrl) {
-      throw new Error(
-        "Storyboard image is required.",
-      );
+      throw new Error("Storyboard image is required.");
     }
 
     if (!prompt) {
-      throw new Error(
-        "Video prompt is required.",
-      );
+      throw new Error("Video prompt is required.");
     }
 
-    const result =
-      await ltxVideoProvider.generateVideo({
-        imageUrl,
-        prompt,
-        duration:
-          Number(duration) || 3.5,
-        aspectRatio:
-          aspectRatio || "16:9",
-      });
+    const result = await wanVideoProvider.generateVideo({
+      imageUrl,
+      prompt,
+      duration: Number(duration) || 5,
+      resolution: quality,
+    });
 
     return {
       ...result,
@@ -45,5 +28,4 @@ class VideoGenerationService {
   }
 }
 
-module.exports =
-  new VideoGenerationService();
+module.exports = new VideoGenerationService();

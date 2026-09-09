@@ -1,4 +1,6 @@
 const videoGenerationService = require("../services/Generation/videoGeneration.service");
+const videoService = require("../services/Video/video.service");
+const videoStorageService = require("../services/Storage/videoStorage.service");
 
 class VideoGenerationController {
   async generate(req, res) {
@@ -12,7 +14,7 @@ class VideoGenerationController {
         });
       }
 
-      const { imageUrl, prompt, duration, aspectRatio, sceneId, projectId } =
+      const { imageUrl, prompt, duration, quality, sceneId, projectId } =
         req.body;
 
       if (!imageUrl) {
@@ -34,7 +36,27 @@ class VideoGenerationController {
         imageUrl,
         prompt,
         duration,
-        aspectRatio,
+        quality,
+      });
+
+      const storedVideo = await videoStorageService.saveFromUrl(result.url);
+      const publicBaseUrl = (
+        process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get("host")}`
+      ).replace(/\/$/, "");
+      const video = await videoService.createVideo({
+        name: `AI video ${new Date().toISOString()}`,
+        prompt,
+        url: `${publicBaseUrl}${storedVideo.path}`,
+        duration: Math.round(Number(result.duration) || 0),
+        metadata: {
+          provider: result.provider,
+          model: result.model,
+          taskId: result.taskId,
+          requestId: result.requestId,
+          sceneId: sceneId || null,
+        },
+        projectId: projectId || null,
+        userId,
       });
 
       return res.status(200).json({
@@ -42,6 +64,7 @@ class VideoGenerationController {
         message: "Video generated successfully.",
         data: {
           ...result,
+          ...video,
           sceneId: sceneId || null,
           projectId: projectId || null,
         },
