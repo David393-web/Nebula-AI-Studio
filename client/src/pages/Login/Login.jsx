@@ -1,10 +1,12 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Eye, EyeOff, ArrowRight } from "lucide-react";
-import { login } from "../../services/auth";
+import { useAuthStore } from "@/stores/auth/authStore";
 
 export default function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const signIn = useAuthStore((state) => state.login);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -26,12 +28,12 @@ export default function Login() {
     try {
       setLoading(true);
 
-      await login({
+      await signIn({
         email: email.trim(),
         password,
       });
 
-      navigate("/projects");
+      navigate(location.state?.from?.pathname || "/dashboard", { replace: true });
     } catch (err) {
       console.error("Login failed:", err);
 
@@ -169,12 +171,12 @@ export default function Login() {
                     Password
                   </label>
 
-                  <button
-                    type="button"
+                  <Link
+                    to="/forgot-password"
                     className="text-xs text-purple-400 transition hover:text-purple-300"
                   >
                     Forgot password?
-                  </button>
+                  </Link>
                 </div>
 
                 <div className="relative">

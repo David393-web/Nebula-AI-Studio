@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Image, Video, Sparkles } from "lucide-react";
 
 import PromptBox from "./PromptBox";
@@ -8,24 +8,29 @@ import NegativePrompt from "./NegativePrompt";
 import GenerationPreview from "./GenerationPreview";
 import GenerationHistory from "./GenerationHistory";
 import CharacterSelector from "../characters/CharacterSelector";
+import ImageEditTools from "./ImageEditTools";
 
 import { generateAIImage } from "@/api/generationApi";
 
 import useGenerationStore from "@/stores/generation/generationStore";
 import useCharacterStore from "@/stores/characters/characterStore";
 import useAssetStore from "@/stores/assets/assetStore";
+import api from "@/services/api";
 
 export default function GeneratePanel({
   scene = null,
+  projectId = null,
   onGenerationComplete,
 }) {
   const [type, setType] = useState(scene?.type || "image");
+  const [creditCosts, setCreditCosts] = useState(null);
 
   const [prompt, setPrompt] = useState(
     scene?.prompt || "",
   );
 
   const [negativePrompt, setNegativePrompt] = useState("");
+  const [referenceImages, setReferenceImages] = useState([]);
 
   const [result, setResult] = useState(null);
 
@@ -48,6 +53,14 @@ export default function GeneratePanel({
     (state) => state.addAsset,
   );
 
+  useEffect(() => {
+    let active = true;
+    api.get("/credits/costs?duration=5")
+      .then((response) => { if (active) setCreditCosts(response.data?.data?.costs || null); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
+
   const handleGenerate = async () => {
     if (!prompt.trim() || loading) {
       return;
@@ -57,24 +70,41 @@ export default function GeneratePanel({
     setError("");
 
     try {
-      /*
-       * Currently the connected generation API
-       * supports image generation.
-       */
-      if (type !== "image") {
-        throw new Error(
-          "Video generation is not connected yet.",
-        );
-      }
-
-      const generationResponse =
-        await generateAIImage({
+      let generationResponse;
+      if (type === "image") {
+        generationResponse = await generateAIImage({
           prompt: prompt.trim(),
           model,
           ratio,
           quality,
           character: selectedCharacter,
+          sceneId: scene?.id || null,
+          projectId,
         });
+      } else {
+        let imageUrl = result?.type === "image" ? result.url : null;
+        if (referenceImages[0]?.file) {
+          const form = new FormData();
+          form.append("file", referenceImages[0].file);
+          const upload = await api.post("/storage/upload", form, {
+            headers: { "Content-Type": "multipart/form-data" },
+          });
+          const uploadedPath = upload.data?.data?.file?.url;
+          if (!uploadedPath) throw new Error("The reference image could not be uploaded.");
+          const apiOrigin = new URL(api.defaults.baseURL, window.location.origin).origin;
+          imageUrl = `${apiOrigin}${uploadedPath}`;
+        }
+        if (!imageUrl) throw new Error("Add a reference image, or generate an image first, to create a video.");
+        const response = await api.post("/generation/video", {
+          imageUrl,
+          prompt: prompt.trim(),
+          duration: 5,
+          quality: "720P",
+          sceneId: scene?.id || null,
+          projectId: projectId || scene?.projectId || null,
+        }, { timeout: 360000, headers: { "Idempotency-Key": crypto.randomUUID() } });
+        generationResponse = response.data?.data;
+      }
 
       /*
        * Normalize the response so the rest
@@ -105,9 +135,9 @@ export default function GeneratePanel({
         name:
           scene?.title ||
           scene?.name ||
-          `Generated Image`,
+          `Generated ${type === "video" ? "Video" : "Image"}`,
 
-        type: "image",
+        type,
 
         url: generatedUrl,
 
@@ -260,8 +290,10 @@ export default function GeneratePanel({
         )}
       </div>
 
+      {type === "image" && <ImageEditTools onComplete={(images) => { if (images[0]) { setResult({ ...images[0], type: "image" }); setHistory((current) => [...images.map((image) => ({ ...image, type: "image" })), ...current]); images.forEach((image) => addAsset({ ...image, type: "image" })); } }} />}
+
       {/* Image / Video Selector */}
-      <div className="flex gap-2 p-1 border w-fit rounded-xl bg-zinc-900 border-zinc-800">
+      <div data-tour="image-studio" className="flex gap-2 p-1 border w-fit rounded-xl bg-zinc-900 border-zinc-800">
         <button
           type="button"
           onClick={() => {
@@ -278,7 +310,7 @@ export default function GeneratePanel({
           Image
         </button>
 
-        <button
+        <button data-tour="video-studio"
           type="button"
           onClick={() => {
             setType("video");
@@ -321,7 +353,7 @@ export default function GeneratePanel({
 
           {/* Reference Images */}
           <div className="p-6 border rounded-2xl border-zinc-800 bg-zinc-900">
-            <ReferenceImages />
+            <ReferenceImages onImagesChange={setReferenceImages} />
           </div>
 
           {/* Negative Prompt */}
@@ -350,7 +382,7 @@ export default function GeneratePanel({
                   type === "image"
                     ? "Image"
                     : "Video"
-                }`}
+                }${creditCosts ? ` · ${type === "image" ? creditCosts.image : creditCosts.video} credits` : ""}`}
           </button>
         </div>
 

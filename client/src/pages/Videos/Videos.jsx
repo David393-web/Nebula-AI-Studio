@@ -1,164 +1,19 @@
-import {
-  Video,
-  Search,
-  Upload,
-  Sparkles,
-  Play,
-  MoreHorizontal,
-} from "lucide-react";
-
-const demoVideos = [
-  {
-    id: 1,
-    title: "Cinematic Product Reveal",
-    duration: "00:12",
-    image:
-      "https://images.unsplash.com/photo-1536240478700-b869070f9279?w=900&auto=format&fit=crop",
-  },
-  {
-    id: 2,
-    title: "AI Short Film",
-    duration: "00:24",
-    image:
-      "https://images.unsplash.com/photo-1485846234645-a62644f84728?w=900&auto=format&fit=crop",
-  },
-  {
-    id: 3,
-    title: "Fashion Campaign",
-    duration: "00:08",
-    image:
-      "https://images.unsplash.com/photo-1497366811353-6870744d04b2?w=900&auto=format&fit=crop",
-  },
-  {
-    id: 4,
-    title: "Travel Sequence",
-    duration: "00:18",
-    image:
-      "https://images.unsplash.com/photo-1470770841072-f978cf4d019e?w=900&auto=format&fit=crop",
-  },
-];
+import { useEffect, useMemo, useState } from "react";
+import { Download, LoaderCircle, Search, Trash2, Video as VideoIcon } from "lucide-react";
+import { Link } from "react-router-dom";
+import { deleteVideo, getVideos } from "@/services/media";
+import api from "@/services/api";
+import MediaViewer from "@/components/media/MediaViewer";
 
 export default function Videos() {
-  return (
-    <div className="min-h-full text-white bg-zinc-950">
-      {/* Header */}
-      <section className="flex flex-col gap-5 mb-8 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <div className="flex items-center gap-2 mb-2 text-sm text-purple-400">
-            <Video size={16} />
-            <span>Creative Library</span>
-          </div>
-
-          <h1 className="text-3xl font-semibold tracking-tight">
-            Videos
-          </h1>
-
-          <p className="mt-2 text-sm text-zinc-500">
-            Create and manage cinematic AI-generated videos.
-          </p>
-        </div>
-
-        <div className="flex gap-3">
-          <button className="flex items-center gap-2 px-4 py-2.5 text-sm border rounded-xl border-zinc-800 bg-zinc-900 hover:bg-zinc-800">
-            <Upload size={16} />
-            Upload
-          </button>
-
-          <button className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-white bg-purple-600 rounded-xl hover:bg-purple-700">
-            <Sparkles size={16} />
-            Generate Video
-          </button>
-        </div>
-      </section>
-
-      {/* Search */}
-      <section className="flex gap-3 p-3 mb-8 border rounded-2xl border-zinc-800 bg-zinc-900/70">
-        <div className="relative flex-1">
-          <Search
-            size={18}
-            className="absolute -translate-y-1/2 left-4 top-1/2 text-zinc-500"
-          />
-
-          <input
-            type="text"
-            placeholder="Search videos..."
-            className="w-full py-3 pr-4 text-sm text-white border outline-none rounded-xl pl-11 bg-zinc-950 border-zinc-800 placeholder:text-zinc-600"
-          />
-        </div>
-
-        <button className="hidden px-4 text-sm border rounded-xl md:block border-zinc-800 bg-zinc-950 text-zinc-400">
-          All videos
-        </button>
-      </section>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 gap-4 mb-8 lg:grid-cols-4">
-        <Stat label="Total Videos" value="82" />
-        <Stat label="Generated" value="76" />
-        <Stat label="Projects" value="14" />
-        <Stat label="Favorites" value="9" />
-      </div>
-
-      {/* Videos */}
-      <section>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold">Your Videos</h2>
-
-          <span className="text-xs text-zinc-600">
-            82 assets
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
-          {demoVideos.map((video) => (
-            <div
-              key={video.id}
-              className="overflow-hidden border rounded-2xl border-zinc-800 bg-zinc-900"
-            >
-              <div className="relative overflow-hidden aspect-video bg-zinc-950 group">
-                <img
-                  src={video.image}
-                  alt={video.title}
-                  className="object-cover w-full h-full transition duration-500 group-hover:scale-105"
-                />
-
-                <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-                  <button className="flex items-center justify-center w-12 h-12 text-white transition bg-purple-600 rounded-full shadow-xl hover:scale-105">
-                    <Play size={19} fill="currentColor" />
-                  </button>
-                </div>
-
-                <span className="absolute bottom-3 right-3 px-2 py-1 text-[11px] rounded-md bg-black/70">
-                  {video.duration}
-                </span>
-
-                <button className="absolute flex items-center justify-center w-8 h-8 rounded-lg top-3 right-3 bg-black/60 text-zinc-300">
-                  <MoreHorizontal size={17} />
-                </button>
-              </div>
-
-              <div className="p-4">
-                <h3 className="text-sm font-medium">
-                  {video.title}
-                </h3>
-
-                <p className="mt-1 text-xs text-zinc-600">
-                  AI generated video
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function Stat({ label, value }) {
-  return (
-    <div className="p-5 border rounded-2xl border-zinc-800 bg-zinc-900">
-      <p className="text-xs text-zinc-500">{label}</p>
-      <p className="mt-2 text-2xl font-semibold">{value}</p>
-    </div>
-  );
+  const [items, setItems] = useState([]); const [query,setQuery]=useState(""); const [loading,setLoading]=useState(true); const [error,setError]=useState(""); const [viewerIndex,setViewerIndex]=useState(null);
+  const reload=async()=>{try{setItems(await getVideos());setError("");}catch(e){setError(e.response?.data?.message||"Could not load your videos.");}finally{setLoading(false);}};
+  useEffect(()=>{let active=true;getVideos().then((data)=>{if(active)setItems(data);}).catch((e)=>{if(active)setError(e.response?.data?.message||"Could not load your videos.");}).finally(()=>{if(active)setLoading(false);});return()=>{active=false};},[]);
+  const filtered=useMemo(()=>items.filter(item=>(item.name||item.prompt||"").toLowerCase().includes(query.toLowerCase())),[items,query]);
+  const remove=async(id)=>{try{await deleteVideo(id);setItems((old)=>old.filter((item)=>item.id!==id));}catch(e){setError(e.response?.data?.message||"Could not delete this video.");}};
+  return <div className="space-y-7 text-white"><header className="flex flex-wrap items-end justify-between gap-4"><div><div className="mb-2 flex items-center gap-2 text-sm text-violet-400"><VideoIcon size={16}/> Creative library</div><h1 className="text-3xl font-semibold">Videos</h1><p className="mt-2 text-sm text-zinc-500">Your generated video projects.</p></div><Link to="/generate" className="rounded-xl bg-violet-600 px-4 py-3 text-sm font-medium hover:bg-violet-500">Open video workspace</Link></header>
+  <div className="relative"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500" size={18}/><input value={query} onChange={(e)=>setQuery(e.target.value)} placeholder="Search your videos…" className="h-12 w-full rounded-xl border border-zinc-800 bg-zinc-900 pl-11 pr-4 text-sm outline-none focus:border-violet-500"/></div>
+  {error&&<div role="alert" className="flex justify-between rounded-xl border border-red-500/20 p-4 text-sm text-red-300">{error}<button onClick={reload} className="underline">Retry</button></div>}
+  {loading?<div className="flex justify-center py-20 text-zinc-500"><LoaderCircle className="animate-spin"/></div>:filtered.length?<div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{filtered.map((item,index)=><article key={item.id} className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/70"><button type="button" onClick={()=>setViewerIndex(index)} className="group relative block aspect-video w-full bg-black"><video src={item.url} poster={item.thumbnailUrl||undefined} playsInline preload="none" muted className="h-full w-full object-contain" aria-label={`Open ${item.name||"generated video"}`}/><span className="absolute inset-0 grid place-items-center bg-black/0 text-white/0 transition group-hover:bg-black/20 group-hover:text-white">▶</span></button><div className="flex items-start justify-between gap-3 p-4"><div className="min-w-0"><h2 className="truncate text-sm font-medium">{item.name||"Untitled video"}</h2><p className="mt-1 line-clamp-2 text-xs text-zinc-500">{item.prompt||"No prompt saved"}</p></div><div className="flex shrink-0"><a href={`${api.defaults.baseURL}/videos/${encodeURIComponent(item.id)}/download`} className="rounded-lg p-2 text-zinc-400 hover:bg-zinc-800" aria-label="Download video"><Download size={16}/></a><button onClick={()=>remove(item.id)} className="rounded-lg p-2 text-zinc-400 hover:bg-zinc-800 hover:text-red-400" aria-label="Delete video"><Trash2 size={16}/></button></div></div></article>)}</div>:<div className="rounded-2xl border border-dashed border-zinc-800 py-20 text-center"><VideoIcon size={32} className="mx-auto text-zinc-600"/><p className="mt-3 font-medium">{query?"No matching videos":"No videos yet"}</p><p className="mt-1 text-sm text-zinc-500">Generated videos will appear here.</p></div>}
+  {viewerIndex !== null && <MediaViewer items={filtered.map((item) => ({ ...item, type: "video" }))} index={viewerIndex} onClose={() => setViewerIndex(null)} onChange={setViewerIndex} getDownloadUrl={(item) => `${api.defaults.baseURL}/videos/${encodeURIComponent(item.id)}/download`} />}</div>;
 }

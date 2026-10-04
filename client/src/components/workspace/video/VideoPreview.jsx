@@ -76,6 +76,7 @@ export default function VideoPreview({ video }) {
       <video
         key={videoUrl}
         src={videoUrl}
+        crossOrigin="anonymous"
         controls
         playsInline
         preload="metadata"

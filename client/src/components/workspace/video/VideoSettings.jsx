@@ -10,7 +10,7 @@ export default function VideoSettings({
     {
       value: "720P",
       label: "720P",
-      description: "Lower cost",
+      description: "Faster generation, lower cost",
     },
     {
       value: "1080P",

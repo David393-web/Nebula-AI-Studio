@@ -9,6 +9,7 @@ import Gallery from "@/pages/Gallery/Gallery";
 import Downloads from "@/pages/Downloads/Downloads";
 import Settings from "@/pages/Settings/Settings";
 import Generate from "@/pages/Generate/Generate";
+import Billing from "@/pages/Billing/Billing";
 
 // Workspace
 import ProjectWorkspace from "@/pages/ProjectWorkspace";
@@ -26,6 +27,9 @@ import Storyboard from "@/pages/Storyboard/Storyboard";
 
 // Fallback
 import NotFound from "@/pages/NotFound/NotFound";
+import ProtectedRoute from "@/router/ProtectedRoute";
+import GuestRoute from "@/router/GuestRoute";
+import Landing from "@/pages/Landing/Landing";
 
 export default function AppRouter() {
   return (
@@ -33,9 +37,11 @@ export default function AppRouter() {
       {/* ========================================
           MAIN APPLICATION
           ======================================== */}
+      <Route path="/" element={<Landing />} />
+      <Route element={<ProtectedRoute />}>
       <Route element={<MainLayout />}>
         <Route
-          path="/"
+          path="/dashboard"
           element={<Dashboard />}
         />
 
@@ -96,25 +102,18 @@ export default function AppRouter() {
           path="/settings"
           element={<Settings />}
         />
+        <Route path="/billing" element={<Billing />} />
+      </Route>
       </Route>
 
       {/* ========================================
           AUTHENTICATION
           ======================================== */}
-      <Route
-        path="/login"
-        element={<Login />}
-      />
-
-      <Route
-        path="/register"
-        element={<Register />}
-      />
-
-      <Route
-        path="/forgot-password"
-        element={<ForgotPassword />}
-      />
+      <Route element={<GuestRoute />}>
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+      </Route>
 
       {/* ========================================
           FALLBACK

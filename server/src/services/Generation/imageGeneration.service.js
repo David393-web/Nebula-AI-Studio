@@ -31,9 +31,9 @@ class ImageGenerationService {
         prompt,
         aspectRatio: ratio || "1:1",
         outputQuality:
-          quality === "high"
+          String(quality || "standard").toLowerCase() === "ultra"
             ? 90
-            : quality === "low"
+            : String(quality || "standard").toLowerCase() === "standard"
               ? 70
               : 80,
       });
@@ -43,6 +43,21 @@ class ImageGenerationService {
       userId,
       createdAt: new Date().toISOString(),
     };
+  }
+
+  async editImage({ userId, prompt, imageUrl, variations = 1 }) {
+    if (!userId || !imageUrl || typeof prompt !== "string" || !prompt.trim()) {
+      throw new Error("An image and a clear editing instruction are required.");
+    }
+    const count = Math.max(1, Math.min(4, Number(variations) || 1));
+    const results = [];
+    for (let index = 0; index < count; index += 1) {
+      const result = await replicateImageProvider.generateImage({
+        prompt: prompt.trim(), aspectRatio: "match_input_image", inputImages: [imageUrl],
+      });
+      results.push(result);
+    }
+    return results;
   }
 }
 

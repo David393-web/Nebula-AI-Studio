@@ -17,8 +17,14 @@ const videoRoutes = require("./routes/videos.routes");
 const storyboardRoutes = require("./routes/storyboards.routes");
 const generationRoutes = require("./routes/generation.routes");
 const videoGenerationRoutes = require("./routes/videoGeneration.routes");
+const creditsRoutes = require("./routes/credits.routes");
+const billingRoutes = require("./routes/billing.routes");
 
 const app = express();
+const allowedOrigins = (process.env.CLIENT_URL || "http://localhost:5173")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 
 // Security
 app.use(helmet());
@@ -26,7 +32,10 @@ app.use(helmet());
 // CORS
 app.use(
   cors({
-    origin: true,
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+      return callback(new Error("Origin is not allowed by CORS."));
+    },
     credentials: true,
   }),
 );
@@ -35,14 +44,25 @@ app.use(
 app.use(morgan("dev"));
 
 // Request parsing
-app.use(express.json({ limit: "10mb" }));
+app.use(express.json({ limit: "10mb", verify: (req, res, buffer) => { req.rawBody = Buffer.from(buffer); } }));
 app.use(express.urlencoded({ extended: true }));
 
 // Cookies
 app.use(cookieParser());
 
 // Static uploaded files
-app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+app.use("/uploads", (req, res, next) => {
+  // The UI (5173) and API (5000) are separate origins during local development.
+  // Allow browser media elements to read the public generated assets.
+  res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+  next();
+});
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads"), {
+  acceptRanges: true,
+  setHeaders(res, filePath) {
+    if (/\.mp4$/i.test(filePath)) res.setHeader("Content-Type", "video/mp4");
+  },
+}));
 
 // API routes
 app.use("/api/auth", authRoutes);
@@ -57,6 +77,8 @@ app.use("/api/videos", videoRoutes);
 app.use("/api/storyboards", storyboardRoutes);
 app.use("/api/generation", generationRoutes);
 app.use("/api/generation", videoGenerationRoutes);
+app.use("/api/credits", creditsRoutes);
+app.use("/api/billing", billingRoutes);
 
 // Root route
 app.get("/", (req, res) => {
@@ -79,11 +101,25 @@ app.use((req, res) => {
 
 // Global error handler
 app.use((err, req, res, next) => {
-  console.error(err);
+  const status = Number.isInteger(err.status) ? err.status : 500;
+  const databaseUnavailable =
+    ["P1001", "P1002", "P1017", "XX000", "ENOTFOUND"].includes(err?.code) ||
+    ["PrismaClientInitializationError", "PrismaClientKnownRequestError"].includes(err?.name);
+  console.error("Request failed", {
+    method: req.method,
+    path: req.path,
+    status: databaseUnavailable ? 503 : status,
+    code: err?.code || "INTERNAL_ERROR",
+    name: err?.name || "Error",
+  });
 
-  res.status(err.status || 500).json({
+  res.status(databaseUnavailable ? 503 : status).json({
     success: false,
-    message: err.message || "Internal server error",
+    message: databaseUnavailable
+      ? "Database is temporarily unavailable. Please try again later."
+      : status >= 500
+        ? "Something went wrong. Please try again later."
+        : err.message || "Request failed.",
   });
 });
 

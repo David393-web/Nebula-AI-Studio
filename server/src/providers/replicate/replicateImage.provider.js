@@ -1,4 +1,7 @@
 const getReplicateClient = async () => {
+  if (process.env.REPLICATE_IMAGE_ENABLED === "false") {
+    throw new Error("Image generation is disabled by server configuration.");
+  }
   if (!process.env.REPLICATE_API_TOKEN) {
     throw new Error(
       "REPLICATE_API_TOKEN is not configured on the server.",
@@ -12,7 +15,7 @@ const getReplicateClient = async () => {
   });
 };
 
-const MODEL = "black-forest-labs/flux-2-pro";
+const MODEL = process.env.REPLICATE_IMAGE_MODEL || "black-forest-labs/flux-2-pro";
 
 function normalizeOutput(output) {
   if (!output) {
@@ -68,6 +71,7 @@ function normalizeOutput(output) {
 async function generateImage({
   prompt,
   aspectRatio = "1:1",
+  inputImages = [],
   resolution = "1 MP",
   outputFormat = "webp",
   outputQuality = 80,
@@ -82,7 +86,7 @@ async function generateImage({
     prompt: prompt.trim(),
     resolution,
     aspect_ratio: aspectRatio,
-    input_images: [],
+    input_images: inputImages,
     output_format: outputFormat,
     output_quality: outputQuality,
     safety_tolerance: 2,

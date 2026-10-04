@@ -6,6 +6,7 @@ export async function generateAIImage({
   ratio,
   quality,
   sceneId,
+  projectId,
 }) {
   if (!prompt || !prompt.trim()) {
     throw new Error("Image prompt is required.");
@@ -14,11 +15,12 @@ export async function generateAIImage({
   try {
     const response = await api.post("/generation/image", {
       prompt: prompt.trim(),
-      model: model || "flux-pro",
+      model: model || "black-forest-labs/flux-2-pro",
       ratio: ratio || "1:1",
       quality: quality || "standard",
       sceneId: sceneId || null,
-    });
+      projectId: projectId || null,
+    }, { timeout: 180000, headers: { "Idempotency-Key": crypto.randomUUID() } });
 
     const data = response.data?.data || response.data || null;
 

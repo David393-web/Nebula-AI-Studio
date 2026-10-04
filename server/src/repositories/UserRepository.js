@@ -4,7 +4,7 @@ class UserRepository {
   async findByEmail(email) {
     return prisma.user.findUnique({
       where: {
-        email,
+        email: String(email || "").trim().toLowerCase(),
       },
     });
   }
@@ -18,12 +18,25 @@ class UserRepository {
   }
 
   async createUser({ email, passwordHash, name }) {
-    return prisma.user.create({
-      data: {
-        email,
-        passwordHash,
-        name,
-      },
+    return prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          email: String(email || "").trim().toLowerCase(),
+          passwordHash,
+          name,
+        },
+      });
+      await tx.creditAccount.create({ data: { userId: user.id, balance: 50 } });
+      await tx.creditTransaction.create({
+        data: {
+          userId: user.id,
+          delta: 50,
+          type: "GRANT",
+          reason: "New account welcome credits",
+          idempotencyKey: `signup:${user.id}`,
+        },
+      });
+      return user;
     });
   }
 

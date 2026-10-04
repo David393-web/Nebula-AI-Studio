@@ -8,12 +8,13 @@ import {
   Images,
   Download,
   Settings,
+  CreditCard,
 } from "lucide-react";
 
 export const sidebarItems = [
   {
     label: "Dashboard",
-    path: "/",
+    path: "/dashboard",
     icon: LayoutDashboard,
   },
   {
@@ -51,6 +52,7 @@ export const sidebarItems = [
     path: "/downloads",
     icon: Download,
   },
+  { label: "Credits & Billing", path: "/billing", icon: CreditCard },
   {
     label: "Settings",
     path: "/settings",

@@ -972,6 +972,7 @@ export default function ProjectWorkspace() {
         {activeTab === "generate" && (
           <GeneratePanel
             key={generationScene?.id || "default"}
+            projectId={id}
             scene={generationScene}
             onGenerationComplete={handleGeneratedResult}
           />

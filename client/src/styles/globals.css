@@ -7,3 +7,21 @@ color:var(--text);
 font-family:Inter,sans-serif;
 
 }
+
+html[data-theme="light"] body {
+  --bg: #f4f4f5;
+  --surface: #ffffff;
+  --surface-2: #e4e4e7;
+  --text: #18181b;
+  --text-muted: #52525b;
+  background: #f4f4f5;
+  color: #18181b;
+}
+
+html[data-theme="light"] .bg-zinc-950 { background-color: #fafafa !important; }
+html[data-theme="light"] .bg-zinc-900, html[data-theme="light"] .bg-zinc-900\/50, html[data-theme="light"] .bg-zinc-900\/60, html[data-theme="light"] .bg-zinc-900\/70 { background-color: #fff !important; }
+html[data-theme="light"] .bg-zinc-950\/40, html[data-theme="light"] .bg-zinc-950\/50 { background-color: #f4f4f5 !important; }
+html[data-theme="light"] .text-white { color: #18181b !important; }
+html[data-theme="light"] .text-zinc-200, html[data-theme="light"] .text-zinc-300 { color: #27272a !important; }
+html[data-theme="light"] .text-zinc-400, html[data-theme="light"] .text-zinc-500 { color: #52525b !important; }
+html[data-theme="light"] .border-zinc-800, html[data-theme="light"] .border-zinc-800\/70, html[data-theme="light"] .border-zinc-800\/80 { border-color: #d4d4d8 !important; }

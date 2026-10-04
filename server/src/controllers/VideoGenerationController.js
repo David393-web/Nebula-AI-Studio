@@ -1,11 +1,16 @@
 const videoGenerationService = require("../services/Generation/videoGeneration.service");
 const videoService = require("../services/Video/video.service");
 const videoStorageService = require("../services/Storage/videoStorage.service");
+const creditsService = require("../services/Credits/credits.service");
 
 class VideoGenerationController {
   async generate(req, res) {
+    let chargedCredits = 0;
+    let chargeCompleted = false;
+    let userId;
+    const idempotencyKey = req.get("Idempotency-Key");
     try {
-      const userId = req.user?.id || req.user?.userId;
+      userId = req.user?.id || req.user?.userId;
 
       if (!userId) {
         return res.status(401).json({
@@ -30,6 +35,11 @@ class VideoGenerationController {
           message: "Video prompt is required.",
         });
       }
+
+      const requestedDuration = Math.min(15, Math.max(2, Math.round(Number(duration) || 5)));
+      chargedCredits = creditsService.creditCost("video", requestedDuration);
+      await creditsService.charge(userId, chargedCredits, idempotencyKey, `Wan 2.6 I2V Flash video (${requestedDuration}s)`, idempotencyKey);
+      chargeCompleted = true;
 
       const result = await videoGenerationService.generate({
         userId,
@@ -70,11 +80,23 @@ class VideoGenerationController {
         },
       });
     } catch (error) {
-      console.error("Video generation failed:", error);
+      if (chargeCompleted && chargedCredits && userId && idempotencyKey) {
+        try { await creditsService.refund(userId, chargedCredits, idempotencyKey, "Video generation failed"); }
+        catch (refundError) { console.error("Video generation refund failed", { code: refundError?.code || "INTERNAL_ERROR" }); }
+      }
+      console.error("Video generation failed", {
+        provider: error?.provider || "unknown",
+        status: error?.providerStatus || error?.status || 500,
+        quotaExhausted: Boolean(error?.quotaExhausted),
+      });
 
-      return res.status(500).json({
+      return res.status(error?.quotaExhausted ? 503 : error?.status || 500).json({
         success: false,
-        message: error.message || "Video generation failed.",
+        message: error?.quotaExhausted
+          ? "The configured video provider has no available quota, and no compatible fallback provider is configured."
+          : error?.status && error.status < 500
+            ? error.message
+            : "Video generation failed. Please try again later.",
       });
     }
   }

@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { ImagePlus, X } from "lucide-react";
 
-export default function ReferenceImages() {
+export default function ReferenceImages({ onImagesChange }) {
   const inputRef = useRef(null);
   const [images, setImages] = useState([]);
 
@@ -16,21 +16,19 @@ export default function ReferenceImages() {
         preview: URL.createObjectURL(file),
       }));
 
-    setImages((current) => [...current, ...newImages]);
+    const next = [...images, ...newImages];
+    setImages(next);
+    onImagesChange?.(next);
 
     event.target.value = "";
   };
 
   const removeImage = (id) => {
-    setImages((current) => {
-      const image = current.find((item) => item.id === id);
-
-      if (image) {
-        URL.revokeObjectURL(image.preview);
-      }
-
-      return current.filter((item) => item.id !== id);
-    });
+    const image = images.find((item) => item.id === id);
+    if (image) URL.revokeObjectURL(image.preview);
+    const next = images.filter((item) => item.id !== id);
+    setImages(next);
+    onImagesChange?.(next);
   };
 
   return (

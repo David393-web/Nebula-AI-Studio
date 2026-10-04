@@ -82,7 +82,7 @@ export default function Projects() {
 
   return (
     <>
-      <div className="w-full mx-auto max-w-7xl">
+      <div data-tour="projects-list" className="w-full mx-auto max-w-7xl">
         {/* --------------------------------
             Header
         --------------------------------- */}

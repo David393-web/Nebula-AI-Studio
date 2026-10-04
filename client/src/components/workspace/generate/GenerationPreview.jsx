@@ -1,3 +1,5 @@
+import { useState } from "react";
+import MediaViewer from "@/components/media/MediaViewer";
 import {
   Image as ImageIcon,
   Play,
@@ -10,6 +12,7 @@ export default function GenerationPreview({
   type = "image",
   loading = false,
 }) {
+  const [viewerOpen, setViewerOpen] = useState(false);
   return (
     <div className="flex flex-col h-full min-h-[420px] border rounded-2xl border-zinc-800 bg-zinc-900">
       {/* Header */}
@@ -30,19 +33,21 @@ export default function GenerationPreview({
           <div className="flex items-center gap-2">
             <button
               type="button"
+              onClick={() => setViewerOpen(true)}
               className="p-2 transition rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800"
-              title="Fullscreen"
+              title="Expand preview"
             >
               <Maximize2 size={16} />
             </button>
 
-            <button
-              type="button"
+            <a
+              href={result}
+              download
               className="p-2 transition rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800"
               title="Download"
             >
               <Download size={16} />
-            </button>
+            </a>
           </div>
         )}
       </div>
@@ -102,6 +107,7 @@ export default function GenerationPreview({
           </div>
         )}
       </div>
+      {viewerOpen && <MediaViewer items={[{ id: "generation-preview", url: result, type, name: "Generated preview" }]} index={0} onClose={() => setViewerOpen(false)} onChange={() => {}} />}
     </div>
   );
 }

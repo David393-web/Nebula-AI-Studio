@@ -1,0 +1,26 @@
+import { ArrowRight, Image, Video, Clapperboard, Sparkles, FolderKanban, WandSparkles } from "lucide-react";
+import { Link } from "react-router-dom";
+import logo from "@/assets/Images/nebula-logo.png";
+
+const capabilities = [
+  { icon: Image, title: "Image studio", text: "Create and refine images with FLUX.2 Pro." },
+  { icon: Video, title: "Video studio", text: "Turn visual ideas into clips with Wan 2.6." },
+  { icon: Clapperboard, title: "Storyboards", text: "Plan scenes and keep your creative work organized." },
+  { icon: FolderKanban, title: "Project workspace", text: "Keep images, characters, and scenes together." },
+];
+
+export default function Landing() {
+  return <main className="min-h-screen overflow-hidden bg-[#09080d] text-white">
+    <header className="relative z-10 mx-auto flex max-w-7xl items-center justify-between px-5 py-5 sm:px-8">
+      <Link to="/" className="flex items-center gap-3"><img src={logo} alt="Nebula AI" className="h-10 w-10 object-contain"/><span className="font-semibold">Nebula AI <span className="text-zinc-500">Studio</span></span></Link>
+      <nav className="flex items-center gap-3"><Link to="/login" className="rounded-xl px-4 py-2.5 text-sm text-zinc-300 hover:bg-white/5">Log in</Link><Link to="/register" className="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-zinc-950 hover:bg-zinc-200">Get started <ArrowRight className="ml-1 inline" size={15}/></Link></nav>
+    </header>
+    <section className="relative mx-auto grid min-h-[70vh] max-w-7xl items-center gap-12 px-5 py-16 sm:px-8 lg:grid-cols-[1.05fr_.95fr] lg:py-24">
+      <div className="pointer-events-none absolute -left-36 top-12 h-96 w-96 rounded-full bg-violet-700/20 blur-[120px]"/><div className="pointer-events-none absolute right-0 top-10 h-80 w-80 rounded-full bg-fuchsia-700/15 blur-[110px]"/>
+      <div className="relative"><span className="inline-flex items-center gap-2 rounded-full border border-violet-400/20 bg-violet-400/10 px-3 py-1.5 text-xs text-violet-200"><Sparkles size={14}/> Your ideas, one creative workspace</span><h1 className="mt-7 max-w-2xl text-5xl font-semibold leading-[1.06] tracking-tight sm:text-6xl lg:text-7xl">Make something <span className="bg-gradient-to-r from-violet-300 to-fuchsia-300 bg-clip-text text-transparent">remarkable.</span></h1><p className="mt-6 max-w-xl text-base leading-7 text-zinc-400 sm:text-lg">Create images and videos, shape characters, and bring every project together with AI tools built for your creative process.</p><div className="mt-8 flex flex-col gap-3 sm:flex-row"><Link to="/register" className="inline-flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-6 py-3.5 font-semibold hover:bg-violet-500">Start creating <ArrowRight size={18}/></Link><Link to="/login" className="inline-flex items-center justify-center rounded-xl border border-white/15 px-6 py-3.5 font-medium text-zinc-200 hover:bg-white/5">I have an account</Link></div><p className="mt-4 text-xs text-zinc-600">Create a free account to access your private workspace.</p></div>
+      <div className="relative mx-auto w-full max-w-xl"><div className="absolute inset-8 rounded-full bg-purple-600/20 blur-3xl"/><div className="relative rounded-[2rem] border border-white/10 bg-zinc-900/75 p-4 shadow-2xl shadow-black/50 backdrop-blur"><div className="flex items-center justify-between border-b border-white/10 px-3 pb-4"><div className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-red-400"/><span className="h-2 w-2 rounded-full bg-amber-300"/><span className="h-2 w-2 rounded-full bg-emerald-400"/></div><span className="text-xs text-zinc-500">Nebula creative canvas</span><WandSparkles size={16} className="text-violet-300"/></div><div className="grid grid-cols-2 gap-3 p-2 pt-4"><div className="col-span-2 flex aspect-[2/1] items-end overflow-hidden rounded-2xl bg-gradient-to-br from-fuchsia-950 via-violet-800 to-blue-950 p-5"><div><span className="text-xs uppercase tracking-[.22em] text-violet-200">Dream it. Direct it.</span><p className="mt-1 text-xl font-medium">Every idea has a frame.</p></div></div>{capabilities.slice(0, 2).map(({icon:Icon,title,text})=><div key={title} className="rounded-2xl border border-white/5 bg-black/30 p-4"><Icon className="text-violet-300" size={20}/><p className="mt-4 text-sm font-medium">{title}</p><p className="mt-1 text-xs leading-5 text-zinc-500">{text}</p></div>)}</div></div></div>
+    </section>
+    <section className="mx-auto max-w-7xl px-5 pb-20 sm:px-8"><div className="mb-8 max-w-xl"><p className="text-sm font-medium text-violet-300">A place for the whole process</p><h2 className="mt-2 text-3xl font-semibold tracking-tight">From first spark to finished project.</h2></div><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{capabilities.map(({icon:Icon,title,text})=><article key={title} className="rounded-2xl border border-white/10 bg-white/[.025] p-5"><Icon size={21} className="text-violet-300"/><h3 className="mt-4 font-medium">{title}</h3><p className="mt-2 text-sm leading-6 text-zinc-500">{text}</p></article>)}</div></section>
+    <footer className="border-t border-white/10 px-5 py-6 text-center text-xs text-zinc-600">© {new Date().getFullYear()} Nebula AI Studio</footer>
+  </main>;
+}

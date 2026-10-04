@@ -11,21 +11,14 @@ const api = axios.create({
   },
 });
 
-// Attach Nebula authentication token to every API request
-api.interceptors.request.use(
-  (config) => {
-    const token =
-      localStorage.getItem("token") ||
-      localStorage.getItem("accessToken") ||
-      localStorage.getItem("authToken");
-
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
+// Authentication uses the HttpOnly nebula_token cookie set by the API.
+// Remove tokens left by older client versions: a stale Bearer header takes
+// precedence over the valid cookie on the server and causes every request to
+// fail with 401.
+if (typeof window !== "undefined") {
+  ["token", "accessToken", "authToken"].forEach((key) =>
+    window.localStorage.removeItem(key),
+  );
+}
 
 export default api;

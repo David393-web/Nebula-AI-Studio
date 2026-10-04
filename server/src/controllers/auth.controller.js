@@ -111,6 +111,27 @@ class AuthController {
       next(error);
     }
   }
+
+  async updateProfile(req, res, next) {
+    try {
+      const user = await authService.updateProfile(req.user.userId, req.body);
+      return res.status(200).json({ success: true, data: { user } });
+    } catch (error) { next(error); }
+  }
+
+  async completeOnboarding(req, res, next) {
+    try {
+      const user = await authService.completeOnboarding(req.user.userId);
+      return res.status(200).json({ success: true, data: { user } });
+    } catch (error) { next(error); }
+  }
+
+  async changePassword(req, res, next) {
+    try {
+      await authService.changePassword(req.user.userId, req.body);
+      return res.status(200).json({ success: true, message: "Password updated." });
+    } catch (error) { next(error); }
+  }
 }
 
 module.exports = new AuthController();

@@ -1,4 +1,5 @@
 const imageService = require("../services/Image/image.service");
+const downloadLocalMedia = require("../utils/downloadLocalMedia");
 
 class ImageController {
   async create(req, res, next) {
@@ -69,6 +70,13 @@ class ImageController {
     } catch (error) {
       next(error);
     }
+  }
+
+  async download(req, res, next) {
+    try {
+      const image = await imageService.getImage(req.params.id, req.user.userId);
+      return downloadLocalMedia(res, image, "nebula-image");
+    } catch (error) { next(error); }
   }
 
   async update(req, res, next) {

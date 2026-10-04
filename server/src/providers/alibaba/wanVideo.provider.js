@@ -2,7 +2,8 @@ const API_BASE_URL =
   process.env.DASHSCOPE_API_BASE_URL ||
   "https://dashscope-intl.aliyuncs.com/api/v1";
 
-const MODEL = "wan2.6-i2v-flash";
+const MODEL = process.env.ALIBABA_VIDEO_MODEL || "wan2.6-i2v-flash";
+const PROMPT_EXTEND = process.env.ALIBABA_PROMPT_EXTEND === "true";
 
 const POLL_INTERVAL_MS = 15000;
 const MAX_WAIT_MS = 5 * 60 * 1000 + 30 * 1000;
@@ -116,7 +117,8 @@ async function createVideoTask({
 
         parameters: {
           resolution: getResolution(resolution),
-          prompt_extend: true,
+          // Prompt rewriting improves short prompts but adds processing time.
+          prompt_extend: PROMPT_EXTEND,
           duration: getDuration(duration),
           audio: false,
           watermark: false,
@@ -127,18 +129,12 @@ async function createVideoTask({
 
   const data = await response.json();
 
-  console.log("========================================");
-  console.log("ALIYUN VIDEO TASK CREATION");
-  console.log("HTTP status:", response.status);
-  console.dir(data, { depth: 10 });
-  console.log("========================================");
-
   if (!response.ok) {
-    throw new Error(
-      data?.message ||
-        data?.output?.message ||
-        `Alibaba video task creation failed with HTTP ${response.status}.`,
-    );
+    const error = new Error(`Alibaba video generation request failed (HTTP ${response.status}).`);
+    error.provider = "alibaba";
+    error.providerStatus = response.status;
+    error.quotaExhausted = response.status === 403;
+    throw error;
   }
 
   const taskId = data?.output?.task_id;
@@ -187,10 +183,6 @@ async function waitForVideo(taskId) {
     const output = data?.output || {};
     const status = output?.task_status;
 
-    console.log(
-      `[Alibaba Video] Task ${taskId} status: ${status}`,
-    );
-
     if (status === "SUCCEEDED") {
       if (!output.video_url) {
         throw new Error(
@@ -213,10 +205,10 @@ async function waitForVideo(taskId) {
       status === "FAILED" ||
       status === "CANCELED"
     ) {
-      throw new Error(
-        output?.message ||
-          `Alibaba video generation ${status.toLowerCase()}.`,
-      );
+      const error = new Error(`Alibaba video generation ${status.toLowerCase()}.`);
+      error.provider = "alibaba";
+      error.providerStatus = status;
+      throw error;
     }
 
     if (status === "UNKNOWN") {
@@ -243,6 +235,16 @@ async function generateVideo({
   duration = 5,
   resolution,
 }) {
+  if (process.env.ALIBABA_VIDEO_ENABLED === "false") {
+    const error = new Error("Video generation is disabled by server configuration.");
+    error.status = 503;
+    throw error;
+  }
+  if (process.env.VIDEO_PRIMARY_PROVIDER && process.env.VIDEO_PRIMARY_PROVIDER !== "alibaba") {
+    const error = new Error("The configured primary video provider is not implemented.");
+    error.status = 503;
+    throw error;
+  }
   if (
     !imageUrl ||
     typeof imageUrl !== "string"
@@ -261,15 +263,6 @@ async function generateVideo({
     );
   }
 
-  console.log("========================================");
-  console.log("ALIBABA WAN VIDEO REQUEST");
-  console.log("Model:", MODEL);
-  console.log("Prompt:", prompt);
-  console.log("Duration:", getDuration(duration));
-  console.log("Resolution:", getResolution(resolution));
-  console.log("Audio: false");
-  console.log("========================================");
-
   const imageData = await imageUrlToDataUri(imageUrl);
 
   const taskId = await createVideoTask({
@@ -279,17 +272,7 @@ async function generateVideo({
     resolution,
   });
 
-  console.log(
-    `[Alibaba Video] Created task: ${taskId}`,
-  );
-
   const result = await waitForVideo(taskId);
-
-  console.log("========================================");
-  console.log("ALIBABA WAN VIDEO SUCCESS");
-  console.log("Task ID:", result.taskId);
-  console.log("Video URL:", result.url);
-  console.log("========================================");
 
   return {
     provider: "alibaba",

@@ -1,7 +1,7 @@
 import { create } from "zustand";
 
 const useGenerationStore = create((set) => ({
-  model: "Flux Pro",
+  model: "black-forest-labs/flux-2-pro",
   ratio: "1:1",
   quality: "High",
 

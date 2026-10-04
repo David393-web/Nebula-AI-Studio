@@ -25,12 +25,21 @@ export default function VideoPanel({
   const [videoLoading, setVideoLoading] = useState(false);
   const [videoError, setVideoError] = useState("");
 
-  const [quality, setQuality] = useState("1080P");
+  const [quality, setQuality] = useState("720P");
   const [duration, setDuration] = useState("5");
+  const [creditCost, setCreditCost] = useState(null);
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedVideo, setGeneratedVideo] = useState(null);
   const [generationError, setGenerationError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    api.get(`/credits/costs?duration=${encodeURIComponent(duration)}`)
+      .then((response) => { if (active) setCreditCost(response.data?.data?.costs?.video ?? null); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [duration]);
 
   /*
    * --------------------------------
@@ -226,6 +235,7 @@ export default function VideoPanel({
         },
         {
           timeout: 360000,
+          headers: { "Idempotency-Key": crypto.randomUUID() },
         },
       );
 
@@ -573,7 +583,7 @@ export default function VideoPanel({
           >
             <Sparkles size={17} />
 
-            {isGenerating ? "Generating Video..." : "Generate Video Clip"}
+            {isGenerating ? "Generating Video..." : `Generate Video Clip${creditCost ? ` · ${creditCost} credits` : ""}`}
           </button>
 
           {!projectId && (
