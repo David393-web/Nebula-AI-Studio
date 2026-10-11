@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { AlertCircle, Play } from "lucide-react";
+import { AlertCircle, Download, Play } from "lucide-react";
+import api from "@/services/api";
 
 export default function VideoPreview({ video }) {
   const [hasError, setHasError] = useState(false);
@@ -72,7 +73,7 @@ export default function VideoPreview({ video }) {
   }
 
   return (
-    <div className="relative overflow-hidden bg-black border rounded-2xl border-zinc-800">
+      <div className="relative overflow-hidden rounded-2xl border border-zinc-800 bg-black">
       <video
         key={videoUrl}
         src={videoUrl}
@@ -80,7 +81,7 @@ export default function VideoPreview({ video }) {
         controls
         playsInline
         preload="metadata"
-        className="block w-full h-auto max-h-[680px] bg-black"
+        className="block aspect-video max-h-[72vh] w-full bg-black object-contain"
         onError={() => {
           setHasError(true);
         }}
@@ -93,7 +94,18 @@ export default function VideoPreview({ video }) {
           <Play size={11} fill="currentColor" />
           AI Generated
         </div>
+        {video.fallbackUsed && video.model && (
+          <div className="mt-2 rounded-full bg-black/70 px-3 py-1.5 text-[10px] font-medium text-violet-200 backdrop-blur-sm">
+            Backup model · {video.model}
+          </div>
+        )}
+        {video.audioRequested && !video.audioGenerated && (
+          <div className="mt-2 rounded-full bg-black/70 px-3 py-1.5 text-[10px] font-medium text-amber-200 backdrop-blur-sm">
+            Silent output · model does not support generated audio
+          </div>
+        )}
       </div>
+      <a href={video.id ? `${api.defaults.baseURL}/videos/${encodeURIComponent(video.id)}/download` : videoUrl} download className="absolute right-3 top-3 z-10 rounded-lg bg-black/70 p-2 text-white hover:bg-black" aria-label="Download generated video" title="Download video"><Download size={16}/></a>
     </div>
   );
 }

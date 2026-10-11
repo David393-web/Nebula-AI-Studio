@@ -7,15 +7,20 @@ import {
   Image as ImageIcon,
   Video,
 } from "lucide-react";
+import SceneScriptEditor from "./SceneScriptEditor";
+import { getSceneCharacters } from "@/utils/sceneScript";
 
 export default function SceneCard({
   scene,
   index,
   onEdit,
   onDelete,
+  onDuplicate,
   onClearGeneration,
   onSelect,
   onGenerate,
+  onSaveScript,
+  characters = [],
   selected = false,
 }) {
   const generatedUrl =
@@ -35,8 +40,14 @@ export default function SceneCard({
     scene?.imageUrl ||
     scene?.image ||
     null;
+  const scriptSummary = (scene?.metadata?.sceneScript?.blocks || [])
+    .find((block) => block.type !== "character" && block.text?.trim())?.text?.trim()
+    || (scene?.metadata?.sceneScript?.blocks || []).find((block) => block.characterName)?.characterName;
+  const sceneCharacterCount = getSceneCharacters(scene, characters).length;
+  const scriptBlockCount = scene?.metadata?.sceneScript?.blocks?.length || 0;
 
   const hasGeneration = Boolean(generatedUrl);
+  const uploadStatus = scene?.metadata?.uploadStatus;
 
   const characterImage =
     scene?.character?.image ||
@@ -188,6 +199,7 @@ export default function SceneCard({
             <p className="mt-1 text-xs leading-5 text-zinc-500 line-clamp-2">
               {scene?.prompt ||
                 scene?.description ||
+                scriptSummary ||
                 "No scene prompt added yet."}
             </p>
           </div>
@@ -240,6 +252,10 @@ export default function SceneCard({
           </div>
         )}
 
+        {onDuplicate && <button type="button" onClick={(event) => { event.stopPropagation(); onDuplicate(scene); }} className="mt-3 rounded-lg border border-zinc-800 px-3 py-2 text-xs text-zinc-400 hover:bg-zinc-800">Duplicate scene</button>}
+
+        <SceneScriptEditor scene={scene} index={index} characters={characters} onSave={onSaveScript} onEditScene={onEdit} />
+
         {/* Generation Status */}
         <div className="flex items-center gap-2 mt-4">
           <span
@@ -251,16 +267,19 @@ export default function SceneCard({
           />
 
           <span className="text-xs text-zinc-500">
-            {hasGeneration
-              ? "Generation ready"
-              : "Not generated"}
+            {uploadStatus === "Uploading" ? "Uploading" : uploadStatus === "Failed" ? "Failed" : hasGeneration ? "Completed" : "Waiting"}
           </span>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2 text-[10px] text-zinc-500">
+          <span className="rounded-full bg-zinc-950 px-2.5 py-1">{sceneCharacterCount} {sceneCharacterCount === 1 ? "character" : "characters"}</span>
+          <span className="rounded-full bg-zinc-950 px-2.5 py-1">{scriptBlockCount ? `${scriptBlockCount} script blocks` : "No script"}</span>
+          <span className={`rounded-full px-2.5 py-1 ${hasGeneration ? "bg-emerald-500/10 text-emerald-300" : "bg-zinc-950"}`}>{hasGeneration ? "Generated" : "Not generated"}</span>
         </div>
 
         {/* Scene Footer */}
         <div className="flex items-center justify-between gap-3 pt-3 mt-3 border-t border-zinc-800">
           <span className="text-xs capitalize text-zinc-600">
-            {scene?.type || "image"}
+            {(scene?.type || "image") + " · " + (scene?.durationSeconds || 5) + "s"}
           </span>
 
           <div className="flex items-center gap-2">

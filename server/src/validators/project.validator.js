@@ -23,6 +23,11 @@ const validateProjectCreate = (data = {}) => {
     }
   }
 
+  if (data.script !== undefined && data.script !== null) {
+    if (typeof data.script !== "string") errors.script = "Script must be a string";
+    else if (data.script.length > 10000) errors.script = "Script must not exceed 10,000 characters";
+  }
+
   // Status
   if (data.status !== undefined && data.status !== null) {
     if (!VALID_STATUSES.includes(data.status)) {
@@ -40,7 +45,7 @@ const validateProjectUpdate = (data = {}) => {
   const errors = {};
 
   // Make sure something is actually being updated
-  const allowedFields = ["name", "description", "status"];
+  const allowedFields = ["name", "description", "status", "script"];
 
   const providedFields = Object.keys(data).filter((key) =>
     allowedFields.includes(key)
@@ -68,6 +73,11 @@ const validateProjectUpdate = (data = {}) => {
     } else if (data.description.length > 1000) {
       errors.description = "Description must not exceed 1000 characters";
     }
+  }
+
+  if (data.script !== undefined && data.script !== null) {
+    if (typeof data.script !== "string") errors.script = "Script must be a string";
+    else if (data.script.length > 10000) errors.script = "Script must not exceed 10,000 characters";
   }
 
   // Status

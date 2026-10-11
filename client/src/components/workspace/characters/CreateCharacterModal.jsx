@@ -1,19 +1,24 @@
 import { useState } from "react";
 import {
   X,
-  Upload,
   UserRound,
 } from "lucide-react";
+import api from "@/services/api";
+import { resolveMediaUrl } from "@/utils/mediaUrl";
+import FileDropzone from "@/components/media/FileDropzone";
 
 export default function CreateCharacterModal({
   isOpen,
   onClose,
   onCreate,
+  onUpdate,
+  character = null,
 }) {
-  const [name, setName] = useState("");
+  const [name, setName] = useState(character?.name || "");
   const [description, setDescription] =
-    useState("");
-  const [image, setImage] = useState("");
+    useState(character?.description || "");
+  const [image, setImage] = useState(resolveMediaUrl(character?.imageUrl || character?.image) || "");
+  const [imageFile, setImageFile] = useState(null);
   const [isSubmitting, setIsSubmitting] =
     useState(false);
   const [formError, setFormError] =
@@ -44,10 +49,23 @@ export default function CreateCharacterModal({
        * The backend/database is responsible
        * for generating the character ID.
        */
-      await onCreate?.({
+      let imageUrl = character?.imageUrl || character?.image || null;
+      if (imageFile) {
+        const form = new FormData();
+        form.append("file", imageFile);
+        const { data: uploadData } = await api.post("/storage/upload", form, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+        const uploadedPath = uploadData?.data?.image?.url || uploadData?.data?.file?.url;
+        if (!uploadedPath) throw new Error("The uploaded image could not be saved.");
+        imageUrl = resolveMediaUrl(uploadedPath);
+      }
+
+      const saveCharacter = character ? onUpdate : onCreate;
+      await saveCharacter?.({
         name: trimmedName,
         description: trimmedDescription,
-        image: image || null,
+        imageUrl,
       });
 
       /*
@@ -57,6 +75,7 @@ export default function CreateCharacterModal({
       setName("");
       setDescription("");
       setImage("");
+      setImageFile(null);
       setFormError("");
 
       onClose?.();
@@ -83,9 +102,9 @@ export default function CreateCharacterModal({
     onClose?.();
   };
 
-  const handleImageChange = (e) => {
-    const file = e.target.files?.[0];
-
+  const handleImageChange = (files, rejected = []) => {
+    if (rejected.length) setFormError(rejected.join(" · "));
+    const file = files?.[0];
     if (!file) return;
 
     const allowedTypes = [
@@ -107,6 +126,7 @@ export default function CreateCharacterModal({
 
     reader.onload = () => {
       setImage(reader.result);
+      setImageFile(file);
     };
 
     reader.onerror = () => {
@@ -125,11 +145,11 @@ export default function CreateCharacterModal({
         <div className="flex items-center justify-between px-6 py-5 border-b border-zinc-800">
           <div>
             <h2 className="text-lg font-semibold text-white">
-              Create Character
+              {character ? "Edit Character" : "Create Character"}
             </h2>
 
             <p className="mt-1 text-sm text-zinc-500">
-              Create a reusable AI character.
+              {character ? "Update the character details used across your projects." : "Create a reusable AI character."}
             </p>
           </div>
 
@@ -161,38 +181,8 @@ export default function CreateCharacterModal({
               Character Reference
             </label>
 
-            <label className="flex flex-col items-center justify-center w-full h-40 overflow-hidden transition border border-dashed cursor-pointer rounded-xl border-zinc-700 bg-zinc-900/50 hover:border-purple-500/50">
-              {image ? (
-                <img
-                  src={image}
-                  alt="Character preview"
-                  className="object-cover w-full h-full rounded-xl"
-                />
-              ) : (
-                <>
-                  <Upload
-                    size={24}
-                    className="mb-2 text-zinc-500"
-                  />
-
-                  <span className="text-sm text-zinc-400">
-                    Upload a reference image
-                  </span>
-
-                  <span className="mt-1 text-xs text-zinc-600">
-                    PNG, JPG or WEBP
-                  </span>
-                </>
-              )}
-
-              <input
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                className="hidden"
-                disabled={isSubmitting}
-                onChange={handleImageChange}
-              />
-            </label>
+            {image && <img src={image} alt="Character preview" className="mb-3 h-40 w-full rounded-xl border border-zinc-800 object-contain bg-zinc-900" />}
+            <FileDropzone onFiles={handleImageChange} accept="image/png,image/jpeg,image/webp" multiple={false} disabled={isSubmitting} label={image ? "Replace reference image" : "Upload a reference image"} description="Drop a PNG, JPG, or WEBP character image" />
           </div>
 
           {/* Name */}
@@ -267,10 +257,10 @@ export default function CreateCharacterModal({
               {isSubmitting ? (
                 <>
                   <span className="w-4 h-4 border-2 rounded-full border-white/30 border-t-white animate-spin" />
-                  Creating...
+                  Saving...
                 </>
               ) : (
-                "Create Character"
+                character ? "Save Changes" : "Create Character"
               )}
             </button>
           </div>

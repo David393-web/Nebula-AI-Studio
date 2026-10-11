@@ -3,16 +3,16 @@ import {
   UserRound,
   Trash2,
 } from "lucide-react";
+import { resolveMediaUrl } from "@/utils/mediaUrl";
 
 export default function CharacterCard({
   character,
   onSelect,
   onDelete,
+  onEdit,
 }) {
   const imageUrl =
-    character?.image ||
-    character?.imageUrl ||
-    null;
+    resolveMediaUrl(character?.imageUrl || character?.image) || null;
 
   const handleDelete = () => {
     if (!character?.id) return;
@@ -84,6 +84,14 @@ export default function CharacterCard({
         </button>
 
         {/* Delete */}
+        <button
+          type="button"
+          onClick={() => onEdit?.(character)}
+          className="w-full px-4 py-2 mt-2 text-sm font-medium transition border rounded-lg text-zinc-300 border-zinc-800 hover:border-purple-500/40 hover:bg-zinc-900"
+        >
+          Edit details
+        </button>
+
         <button
           type="button"
           onClick={handleDelete}

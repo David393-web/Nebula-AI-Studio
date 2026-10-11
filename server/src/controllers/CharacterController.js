@@ -9,7 +9,8 @@ class CharacterController {
   // CREATE CHARACTER
   async create(req, res, next) {
     try {
-      const { isValid, errors } = validateCharacterCreate(req.body);
+      const body = { ...req.body, imageUrl: req.body.imageUrl ?? req.body.image };
+      const { isValid, errors } = validateCharacterCreate(body);
 
       if (!isValid) {
         return res.status(400).json({
@@ -25,7 +26,7 @@ class CharacterController {
         imageUrl,
         metadata,
         projectId,
-      } = req.body;
+      } = body;
 
       const character = await characterService.createCharacter({
         name,
@@ -88,8 +89,13 @@ class CharacterController {
   // UPDATE CHARACTER
   async update(req, res, next) {
     try {
+      const body = { ...req.body };
+      if (body.imageUrl === undefined && body.image !== undefined) {
+        body.imageUrl = body.image;
+        delete body.image;
+      }
       const { isValid, errors } = validateCharacterUpdate(
-        req.body
+        body
       );
 
       if (!isValid) {
@@ -103,7 +109,7 @@ class CharacterController {
       const character = await characterService.updateCharacter(
         req.params.id,
         req.user.userId,
-        req.body
+        body
       );
 
       return res.status(200).json({

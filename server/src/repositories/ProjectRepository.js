@@ -2,11 +2,12 @@ const prisma = require("../utils/prisma");
 
 class ProjectRepository {
   // CREATE PROJECT
-  async create({ name, description, status, ownerId }) {
+  async create({ name, description, status, script, ownerId }) {
     return prisma.project.create({
       data: {
         name,
         description,
+        script,
         status,
         ownerId,
       },

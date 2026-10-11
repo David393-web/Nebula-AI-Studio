@@ -6,17 +6,19 @@ import {
   Image,
   LayoutDashboard,
   Play,
+  Pencil,
   Plus,
   Sparkles,
   Users,
   Video,
   WandSparkles,
 } from "lucide-react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import api from "@/services/api";
 
 import useCharacterStore from "@/stores/characters/characterStore";
+import useProjectStore from "@/stores/project/projectStore";
 
 import VideoPanel from "@/components/workspace/video/VideoPanel";
 import AssetsPanel from "@/components/workspace/assets/AssetsPanel";
@@ -64,16 +66,25 @@ const tabs = [
 export default function ProjectWorkspace() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const [project, setProject] = useState(null);
   const [projectLoading, setProjectLoading] = useState(true);
   const [projectError, setProjectError] = useState("");
+  const [projectNameEditing, setProjectNameEditing] = useState(false);
+  const [projectNameDraft, setProjectNameDraft] = useState("");
+  const [projectNameSaving, setProjectNameSaving] = useState(false);
+  const [projectNameError, setProjectNameError] = useState("");
+  const [storyScript, setStoryScript] = useState("");
+  const [scriptSaving, setScriptSaving] = useState(false);
+  const [scriptError, setScriptError] = useState("");
 
-  const [activeTab, setActiveTab] = useState("generate");
+  const [activeTab, setActiveTab] = useState(searchParams.get("tab") === "storyboard" ? "storyboard" : "generate");
 
   const [scenes, setScenes] = useState([]);
   const [storyboardLoading, setStoryboardLoading] = useState(true);
   const [storyboardError, setStoryboardError] = useState("");
+  const [sceneImportProgress, setSceneImportProgress] = useState("");
 
   const [selectedScene, setSelectedScene] = useState(null);
   const [editingScene, setEditingScene] = useState(null);
@@ -81,6 +92,12 @@ export default function ProjectWorkspace() {
   const [generationScene, setGenerationScene] = useState(null);
 
   const characters = useCharacterStore((state) => state.characters);
+  const fetchCharacters = useCharacterStore((state) => state.fetchCharacters);
+  const updateProject = useProjectStore((state) => state.updateProject);
+
+  useEffect(() => {
+    fetchCharacters().catch(() => {});
+  }, [fetchCharacters]);
 
   /*
    * --------------------------------
@@ -116,7 +133,7 @@ export default function ProjectWorkspace() {
       return [];
     }
 
-    return storyboardItems.map(normalizeStoryboard).filter(Boolean);
+    return storyboardItems.map(normalizeStoryboard).filter(Boolean).sort(compareStoryboardScenes);
   }, []);
 
   /*
@@ -159,6 +176,7 @@ export default function ProjectWorkspace() {
         }
 
         setProject(loadedProject);
+        setStoryScript(loadedProject.script || "");
         setScenes(loadedScenes);
 
         setSelectedScene((currentScene) => {
@@ -283,6 +301,39 @@ export default function ProjectWorkspace() {
     navigate("/projects");
   };
 
+  const handleSaveProjectName = async (event) => {
+    event.preventDefault();
+    const name = projectNameDraft.trim();
+    if (!name) {
+      setProjectNameError("Project name is required.");
+      return;
+    }
+    setProjectNameSaving(true);
+    setProjectNameError("");
+    try {
+      const savedProject = await updateProject(id, { name });
+      if (!savedProject) throw new Error("Project was updated but no saved record was returned.");
+      setProject(savedProject);
+      setProjectNameDraft(savedProject.name || name);
+      setProjectNameEditing(false);
+    } catch (error) {
+      setProjectNameError(error.response?.data?.message || error.message || "Could not rename project.");
+    } finally {
+      setProjectNameSaving(false);
+    }
+  };
+
+  const handleSaveScript = async () => {
+    if (!id || scriptSaving) return;
+    setScriptSaving(true); setScriptError("");
+    try {
+      const { data } = await api.patch(`/projects/${id}`, { script: storyScript });
+      if (data?.data?.project) setProject(data.data.project);
+    } catch (error) {
+      setScriptError(error.response?.data?.message || "Could not save the story script.");
+    } finally { setScriptSaving(false); }
+  };
+
   /*
    * --------------------------------
    * Scene Creation
@@ -360,6 +411,15 @@ export default function ProjectWorkspace() {
         metadata.character = sceneData.character || null;
       }
 
+      if (sceneData.durationSeconds !== undefined) metadata.durationSeconds = Math.min(15, Math.max(2, Number(sceneData.durationSeconds) || 5));
+      if (sceneData.audioMode !== undefined) metadata.audioMode = sceneData.audioMode || "inherit";
+      if (sceneData.audioPrompt !== undefined) metadata.audioPrompt = sceneData.audioPrompt || "";
+      metadata.sortOrder = Number.isFinite(Number(sceneData.sortOrder)) ? Number(sceneData.sortOrder) : existingScene ? Number(existingScene.metadata?.sortOrder || 0) : scenes.length;
+      if (sceneData.imageId !== undefined) metadata.imageId = sceneData.imageId || null;
+      if (sceneData.videoUrl !== undefined) metadata.videoUrl = sceneData.videoUrl || null;
+      if (sceneData.videoId !== undefined) metadata.videoId = sceneData.videoId || null;
+      if (sceneData.videoGeneratedAt !== undefined) metadata.videoGeneratedAt = sceneData.videoGeneratedAt || null;
+
       if (sceneData.generatedUrl !== undefined) {
         metadata.generatedUrl = sceneData.generatedUrl || null;
       }
@@ -377,7 +437,8 @@ export default function ProjectWorkspace() {
       }
 
       const payload = {
-        name: sceneData.name || sceneData.title || "Untitled Scene",
+        // The editor's title is the source of truth. Existing `name` can be stale.
+        name: String(sceneData.title ?? sceneData.name ?? "Untitled Scene").trim(),
 
         description: sceneData.description || sceneData.prompt || null,
 
@@ -449,6 +510,94 @@ export default function ProjectWorkspace() {
        * failed and can keep the editor open.
        */
       throw error;
+    }
+  };
+
+  const handleSaveSceneScript = async (sceneId, sceneScript) => {
+    const scene = scenes.find((item) => item.id === sceneId);
+    if (!scene) throw new Error("This scene is no longer available.");
+    const linkedIds = new Set((sceneScript.blocks || []).map((block) => block.characterId).filter(Boolean));
+    const linked = characters.filter((character) => linkedIds.has(character.id)).map((character) => ({ id: character.id, name: character.name, description: character.description || "", imageUrl: character.imageUrl || character.image || null }));
+    const previous = Array.isArray(scene.metadata?.sceneCharacters) ? scene.metadata.sceneCharacters : [];
+    const merged = [...previous, ...linked].filter((character, index, rows) => rows.findIndex((row) => row.id === character.id) === index);
+    const metadata = { ...(scene.metadata || {}), sceneScript };
+    if (merged.length) metadata.sceneCharacters = merged;
+    const saved = await handleSaveScene({ ...scene, metadata });
+    setGenerationScene((current) => current?.id === sceneId ? { ...saved, generationSource: current.generationSource || "storyboard", sceneNumber: current.sceneNumber || scenes.findIndex((item) => item.id === sceneId) + 1 } : current);
+  };
+
+  const handleSaveSceneCharacters = async (sceneId, sceneCharacters) => {
+    const scene = scenes.find((item) => item.id === sceneId);
+    if (!scene) throw new Error("This scene is no longer available.");
+    const snapshots = sceneCharacters.map((character) => ({ id: character.id, name: character.name, description: character.description || "", imageUrl: character.imageUrl || character.image || null }));
+    const saved = await handleSaveScene({ ...scene, metadata: { ...(scene.metadata || {}), sceneCharacters: snapshots } });
+    setGenerationScene((current) => current?.id === sceneId ? { ...saved, generationSource: current.generationSource || "storyboard", sceneNumber: current.sceneNumber || scenes.findIndex((item) => item.id === sceneId) + 1 } : current);
+  };
+
+  const handleAddManyScenes = async () => {
+    if (!id) return;
+    setStoryboardError("");
+    try {
+      for (let index = 0; index < 3; index += 1) {
+        await handleSaveScene({ title: `Scene ${scenes.length + index + 1}`, sortOrder: scenes.length + index, prompt: "", imageUrl: null, metadata: {} });
+      }
+    } catch (error) {
+      setStoryboardError(error.message || "Could not add blank scenes.");
+    }
+  };
+
+  const handleImportSceneFiles = async (files, rejected = []) => {
+    const imageFiles = (files || []).filter((file) => file.type.startsWith("image/"));
+    if (!imageFiles.length) { setStoryboardError(rejected.join(" · ") || "Choose one or more image files for storyboard scenes."); return; }
+    setStoryboardError(rejected.join(" · "));
+    let completed = 0;
+    const failures = [];
+    for (const [index, file] of imageFiles.entries()) {
+      setSceneImportProgress(`Uploading scene ${index + 1} of ${imageFiles.length}: ${file.name}`);
+      let scene = null;
+      try {
+        scene = await handleSaveScene({ title: file.name.replace(/\.[^.]+$/, "") || `Scene ${scenes.length + index + 1}`, prompt: "", imageId: null, imageUrl: null, sortOrder: scenes.length + index, metadata: { uploadStatus: "Uploading", videoStatus: "Waiting" } });
+        const form = new FormData(); form.append("file", file);
+        const { data } = await api.post("/storage/upload", form, { headers: { "Content-Type": "multipart/form-data" } });
+        const image = data?.data?.image;
+        if (!image?.id || !image?.url) throw new Error("Upload did not return a saved library image.");
+        const metadata = { ...(scene.metadata || {}), imageId: image.id, uploadStatus: "Completed", videoStatus: "Waiting" };
+        const saved = await api.patch(`/storyboards/${scene.id}`, { name: scene.name || scene.title, description: scene.description || null, imageUrl: image.url, projectId: id, metadata });
+        const normalized = normalizeStoryboard(saved.data?.data?.storyboard || {});
+        if (normalized?.id) setScenes((current) => current.map((row) => row.id === normalized.id ? normalized : row));
+        completed += 1;
+      } catch (error) {
+        if (scene?.id) {
+          const metadata = { ...(scene.metadata || {}), uploadStatus: "Failed", videoStatus: "Waiting" };
+          await api.patch(`/storyboards/${scene.id}`, { name: scene.name || scene.title, description: scene.description || null, imageUrl: null, projectId: id, metadata }).catch(() => {});
+          setScenes((current) => current.map((row) => row.id === scene.id ? { ...row, metadata } : row));
+        }
+        failures.push(`${file.name}: ${error.response?.data?.message || error.message}`);
+      }
+    }
+    setSceneImportProgress("");
+    if (failures.length || rejected.length) setStoryboardError(`${completed} scene(s) imported. ${[...rejected, ...failures].length} file(s) skipped or failed: ${[...rejected, ...failures].join("; ")}`);
+  };
+
+  const handleDuplicateScene = async (scene) => {
+    const metadata = { ...(scene.metadata || {}) };
+    ["generatedUrl", "generatedType", "generatedId", "generatedAt", "videoUrl", "videoId", "videoGeneratedAt"].forEach((key) => delete metadata[key]);
+    await handleSaveScene({ ...scene, id: undefined, title: `${scene.title || scene.name || "Scene"} copy`, sortOrder: scenes.length, generatedUrl: null, generatedType: null, generatedId: null, generatedAt: null, videoUrl: null, videoId: null, videoGeneratedAt: null, metadata });
+  };
+
+  const handleReorderScenes = async (sceneId, targetId) => {
+    if (!sceneId || !targetId || sceneId === targetId) return;
+    const reordered = [...scenes];
+    const fromIndex = reordered.findIndex((scene) => scene.id === sceneId);
+    const toIndex = reordered.findIndex((scene) => scene.id === targetId);
+    if (fromIndex < 0 || toIndex < 0) return;
+    const [moved] = reordered.splice(fromIndex, 1);
+    reordered.splice(toIndex, 0, moved);
+    setScenes(reordered.map((scene, sortOrder) => ({ ...scene, sortOrder, metadata: { ...(scene.metadata || {}), sortOrder } })));
+    try {
+      await Promise.all(reordered.map((scene, sortOrder) => api.patch(`/storyboards/${scene.id}`, { name: scene.name || scene.title || "Untitled Scene", description: scene.description || scene.prompt || null, imageUrl: scene.imageUrl || null, projectId: id, metadata: { ...(scene.metadata || {}), sortOrder } })));
+    } catch (error) {
+      setStoryboardError(error.response?.data?.message || "Scene order could not be saved. Refresh and try again.");
     }
   };
 
@@ -584,7 +733,7 @@ export default function ProjectWorkspace() {
     }
 
     setSelectedScene(scene);
-    setGenerationScene(scene);
+    setGenerationScene({ ...scene, projectId: id, generationSource: "storyboard", sceneNumber: scenes.findIndex((item) => item.id === scene.id) + 1 });
     setActiveTab("generate");
   };
 
@@ -747,22 +896,15 @@ export default function ProjectWorkspace() {
    * Generate All
    * --------------------------------
    *
-   * The actual generation queue belongs to the
-   * generation system. Until that system exposes
-   * a queue/batch API, this safely opens the first
-   * scene rather than pretending all scenes were
-   * generated.
+   * Open the scene video workspace, where one clip
+   * is generated for every scene with a source image.
    */
   const handleGenerateAll = () => {
     if (scenes.length === 0) {
       return;
     }
 
-    const firstScene = scenes[0];
-
-    setSelectedScene(firstScene);
-    setGenerationScene(firstScene);
-    setActiveTab("generate");
+    setActiveTab("video");
   };
 
   /*
@@ -778,14 +920,39 @@ export default function ProjectWorkspace() {
    * generation event and keeps the user on the Video tab.
    * --------------------------------
    */
-  const handleGenerateVideo = (videoData) => {
+  const handleGenerateVideo = async (videoData) => {
     if (!videoData) {
       return;
     }
 
-    console.log("Video generated successfully:", videoData);
-
     setActiveTab("video");
+    const scene = scenes.find((item) => item.id === videoData.sceneId);
+    if (!scene) return;
+    const updated = {
+      ...scene,
+      videoUrl: videoData.url,
+      videoId: videoData.id || null,
+      videoGeneratedAt: videoData.createdAt || new Date().toISOString(),
+    };
+    const metadata = { ...(scene.metadata || {}), videoUrl: updated.videoUrl, videoId: updated.videoId, videoGeneratedAt: updated.videoGeneratedAt };
+    setScenes((current) => current.map((item) => item.id === scene.id ? { ...updated, metadata } : item));
+    try {
+      const { data } = await api.patch(`/storyboards/${scene.id}`, {
+        name: scene.name || scene.title || "Untitled Scene",
+        description: scene.description || scene.prompt || null,
+        imageUrl: scene.imageUrl || scene.image || null,
+        projectId: id,
+        scenes: Array.isArray(scene.scenes) ? scene.scenes : null,
+        metadata,
+      });
+      const saved = data?.data?.storyboard;
+      if (saved) {
+        const normalized = normalizeStoryboard(saved);
+        setScenes((current) => current.map((item) => item.id === scene.id ? normalized : item));
+      }
+    } catch (error) {
+      setStoryboardError(error.response?.data?.message || "Video was created, but the scene link could not be saved.");
+    }
   };
 
   /*
@@ -876,9 +1043,19 @@ export default function ProjectWorkspace() {
                   </span>
                 </div>
 
-                <h1 className="mt-1 text-xl font-bold truncate sm:text-2xl">
-                  {project?.name || "Untitled Project"}
-                </h1>
+                {projectNameEditing ? (
+                  <form onSubmit={handleSaveProjectName} className="mt-2 flex flex-wrap items-center gap-2">
+                    <input aria-label="Project name" autoFocus value={projectNameDraft} onChange={(event) => setProjectNameDraft(event.target.value)} disabled={projectNameSaving} maxLength={100} className="h-10 min-w-48 rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-lg font-semibold text-white outline-none focus:border-purple-500" />
+                    <button type="submit" disabled={projectNameSaving || !projectNameDraft.trim()} className="rounded-lg bg-purple-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">{projectNameSaving ? "Saving…" : "Save"}</button>
+                    <button type="button" disabled={projectNameSaving} onClick={() => { setProjectNameEditing(false); setProjectNameError(""); }} className="rounded-lg px-3 py-2 text-sm text-zinc-400 hover:text-white">Cancel</button>
+                    {projectNameError && <span role="alert" className="basis-full text-xs text-red-400">{projectNameError}</span>}
+                  </form>
+                ) : (
+                  <div className="mt-1 flex items-center gap-2">
+                    <h1 className="text-xl font-bold truncate sm:text-2xl">{project?.name || "Untitled Project"}</h1>
+                    <button type="button" aria-label="Rename project" onClick={() => { setProjectNameDraft(project?.name || ""); setProjectNameEditing(true); }} className="rounded-md p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-white"><Pencil size={15}/></button>
+                  </div>
+                )}
 
                 {project?.description && (
                   <p className="max-w-2xl mt-1 text-sm truncate text-zinc-500">
@@ -974,6 +1151,8 @@ export default function ProjectWorkspace() {
             key={generationScene?.id || "default"}
             projectId={id}
             scene={generationScene}
+            characters={characters}
+            onSaveSceneCharacters={handleSaveSceneCharacters}
             onGenerationComplete={handleGeneratedResult}
           />
         )}
@@ -991,10 +1170,22 @@ export default function ProjectWorkspace() {
             <StoryboardToolbar
               sceneCount={scenes.length}
               onAddScene={handleAddScene}
+              onAddManyScenes={handleAddManyScenes}
+              onImportFiles={handleImportSceneFiles}
+              importProgress={sceneImportProgress}
               onGenerateAll={handleGenerateAll}
               onRefresh={handleRefreshStoryboard}
               loading={storyboardLoading}
             />
+
+            <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                <div><h2 className="font-semibold text-white">Story script</h2><p className="mt-1 text-xs text-zinc-500">Scene image and video prompts use this story for narrative continuity.</p></div>
+                <button type="button" onClick={handleSaveScript} disabled={scriptSaving} className="rounded-lg bg-zinc-800 px-3 py-2 text-xs font-medium text-white hover:bg-zinc-700 disabled:opacity-50">{scriptSaving ? "Saving…" : "Save script"}</button>
+              </div>
+              <textarea value={storyScript} onChange={(event) => setStoryScript(event.target.value)} maxLength={10000} rows={5} placeholder="Describe the story, its characters, and the events in order. Create one scene for each moment below." className="w-full resize-y rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm leading-6 text-white outline-none focus:border-violet-500" />
+              {scriptError && <p role="alert" className="mt-2 text-xs text-red-300">{scriptError}</p>}
+            </section>
 
             {storyboardError && (
               <div className="flex items-start gap-3 p-4 border rounded-xl border-red-500/20 bg-red-500/5">
@@ -1024,13 +1215,15 @@ export default function ProjectWorkspace() {
             )}
 
             {!storyboardLoading && showSceneEditor && (
-              <div className="max-w-3xl">
-                <SceneEditor
-                  key={editingScene?.id || "new"}
-                  scene={editingScene}
-                  onSave={handleSaveScene}
-                  onClose={handleCloseEditor}
-                />
+              <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm sm:p-6" onMouseDown={(event) => { if (event.target === event.currentTarget) handleCloseEditor(); }}>
+                <div role="dialog" aria-modal="true" aria-label={editingScene ? "Edit scene" : "Create scene"} className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-2xl shadow-2xl shadow-black/50">
+                  <SceneEditor
+                    key={editingScene?.id || "new"}
+                    scene={editingScene}
+                    onSave={handleSaveScene}
+                    onClose={handleCloseEditor}
+                  />
+                </div>
               </div>
             )}
 
@@ -1041,6 +1234,8 @@ export default function ProjectWorkspace() {
                 onSelect={handleSelectScene}
                 onAdd={handleAddScene}
                 onGenerate={handleGenerateScene}
+                onReorder={handleReorderScenes}
+                onDuplicate={handleDuplicateScene}
               />
             )}
 
@@ -1074,6 +1269,9 @@ export default function ProjectWorkspace() {
                       onDelete={handleDeleteScene}
                       onClearGeneration={handleClearSceneGeneration}
                       onGenerate={handleGenerateScene}
+                      onDuplicate={handleDuplicateScene}
+                      characters={characters}
+                      onSaveScript={handleSaveSceneScript}
                     />
                   ))}
                 </div>
@@ -1094,6 +1292,7 @@ export default function ProjectWorkspace() {
             scenes={scenes}
             projectId={id}
             characters={characters}
+            storyScript={storyScript}
             onGenerateVideo={handleGenerateVideo}
           />
         )}
@@ -1561,6 +1760,14 @@ function normalizeStoryboard(storyboard) {
 
     notes,
 
+    imageId: storyboard.imageId || metadata.imageId || null,
+
+    durationSeconds: Number(storyboard.durationSeconds || metadata.durationSeconds || 5),
+    sortOrder: Number.isFinite(Number(metadata.sortOrder)) ? Number(metadata.sortOrder) : null,
+    audioMode: storyboard.audioMode || metadata.audioMode || "inherit",
+    audioPrompt: storyboard.audioPrompt || metadata.audioPrompt || "",
+    sceneScript: metadata.sceneScript || { version: 1, blocks: [] },
+
     character,
 
     imageUrl,
@@ -1575,6 +1782,19 @@ function normalizeStoryboard(storyboard) {
 
     generatedAt: storyboard.generatedAt || metadata.generatedAt || null,
 
+    videoUrl: storyboard.videoUrl || metadata.videoUrl || null,
+
+    videoId: storyboard.videoId || metadata.videoId || null,
+
+    videoGeneratedAt: storyboard.videoGeneratedAt || metadata.videoGeneratedAt || null,
+
     metadata,
   };
+}
+
+function compareStoryboardScenes(a, b) {
+  const aOrder = Number.isFinite(a.sortOrder) ? a.sortOrder : null;
+  const bOrder = Number.isFinite(b.sortOrder) ? b.sortOrder : null;
+  if (aOrder !== null && bOrder !== null && aOrder !== bOrder) return aOrder - bOrder;
+  return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
 }

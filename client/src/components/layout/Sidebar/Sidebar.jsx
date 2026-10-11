@@ -2,9 +2,10 @@ import SidebarItem from "./SidebarItem";
 import { sidebarItems } from "./sidebar.data";
 import nebulaLogo from "@/assets/Images/nebula-logo.png";
 import { Home, Folder, Images, Settings, Grid2X2, X } from "lucide-react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { useAuthStore } from "@/stores/auth/authStore";
 
 const mobileItems = [
   { label: "Home", path: "/dashboard", icon: Home },
@@ -16,6 +17,11 @@ const mobileItems = [
 
 export default function Sidebar() {
   const [toolsOpen, setToolsOpen] = useState(false);
+  const location = useLocation();
+  const user = useAuthStore((state) => state.user);
+  const visibleSidebarItems = sidebarItems.filter((item) => !item.adminOnly || user?.role === "ADMIN");
+  const sidebarGroups = [...new Set(visibleSidebarItems.map((item) => item.section))];
+  const isToolActive = visibleSidebarItems.some((item) => !["Dashboard", "Projects", "Gallery", "Settings"].includes(item.label) && (location.pathname === item.path || location.pathname.startsWith(`${item.path}/`)));
   return (
     <>
     <aside className="hidden h-full w-[250px] shrink-0 flex-col border-r border-zinc-800/80 bg-zinc-950 md:flex">
@@ -47,10 +53,11 @@ export default function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex flex-col flex-1 px-3 pt-5">
-        {sidebarItems.map((item) => (
-          <SidebarItem key={item.label} {...item} />
-        ))}
+      <nav aria-label="Workspace navigation" className="flex flex-1 flex-col gap-4 overflow-y-auto px-3 pb-4 pt-5">
+        {sidebarGroups.map((section) => <section key={section}>
+          <h2 className="mb-2 px-3.5 text-[10px] font-semibold uppercase tracking-[.16em] text-zinc-600">{section}</h2>
+          {visibleSidebarItems.filter((item) => item.section === section).map((item) => <SidebarItem key={item.label} {...item} />)}
+        </section>)}
       </nav>
 
       {/* Storage */}
@@ -74,10 +81,10 @@ export default function Sidebar() {
       {toolsOpen && <div className="fixed inset-0 z-[60] bg-black/60 md:hidden" onClick={() => setToolsOpen(false)} />}
       {toolsOpen && <section className="fixed inset-x-0 bottom-[70px] z-[70] max-h-[70dvh] overflow-y-auto rounded-t-3xl border border-zinc-800 bg-zinc-900 p-5 md:hidden">
         <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-semibold">All tools</h2><button aria-label="Close tools" onClick={() => setToolsOpen(false)} className="rounded-lg p-2 text-zinc-400"><X size={20}/></button></div>
-        <div className="grid grid-cols-2 gap-2">{sidebarItems.filter(item => !["Dashboard", "Projects", "Settings"].includes(item.label)).map(({label,path,icon:Icon}) => <NavLink key={label} to={path} onClick={() => setToolsOpen(false)} className="flex items-center gap-3 rounded-xl bg-zinc-950 p-4 text-sm text-zinc-200"><Icon size={18} className="text-violet-400"/>{label}</NavLink>)}</div>
+        <div className="grid grid-cols-2 gap-2">{visibleSidebarItems.filter(item => !["Dashboard", "Projects", "Gallery", "Settings"].includes(item.label)).map(({label,path,icon:Icon}) => <NavLink key={label} to={path} onClick={() => setToolsOpen(false)} className={({ isActive }) => `flex items-center gap-3 rounded-xl border p-4 text-sm transition ${isActive ? "border-violet-500/40 bg-violet-500/10 text-white" : "border-transparent bg-zinc-950 text-zinc-200 hover:border-zinc-700"}`}><Icon size={18} className="text-violet-400"/>{label}</NavLink>)}</div>
       </section>}
       <nav aria-label="Mobile navigation" className="fixed inset-x-0 bottom-0 z-50 grid h-[68px] grid-cols-5 border-t border-zinc-800 bg-zinc-950/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl md:hidden">
-        {mobileItems.map(({label,path,icon:Icon}) => label === "Tools" ? <button key={label} onClick={() => setToolsOpen(value => !value)} className={`flex flex-col items-center justify-center gap-1 text-[10px] ${toolsOpen ? "text-violet-300" : "text-zinc-500"}`}><Icon size={20}/>{label}</button> : <NavLink key={label} to={path} className={({isActive}) => `flex flex-col items-center justify-center gap-1 text-[10px] ${isActive ? "text-violet-300" : "text-zinc-500"}`}><Icon size={20}/>{label}</NavLink>)}
+        {mobileItems.map(({label,path,icon:Icon}) => label === "Tools" ? <button key={label} aria-expanded={toolsOpen} onClick={() => setToolsOpen(value => !value)} className={`flex flex-col items-center justify-center gap-1 text-[10px] ${toolsOpen || isToolActive ? "text-violet-300" : "text-zinc-500"}`}><Icon size={20}/>{label}</button> : <NavLink key={label} to={path} className={({isActive}) => `flex flex-col items-center justify-center gap-1 text-[10px] ${isActive ? "text-violet-300" : "text-zinc-500"}`}><Icon size={20}/>{label}</NavLink>)}
       </nav>
     </>
     </>

@@ -12,6 +12,8 @@ const router = express.Router();
 
 router.use(authenticate);
 
+router.get("/video/status/:requestId", videoGenerationController.getStatus);
+
 router.post(
   "/video",
   videoGenerationController.generate,

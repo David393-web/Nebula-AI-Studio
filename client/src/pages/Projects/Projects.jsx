@@ -2,7 +2,7 @@ import {
   FolderOpen,
   Grid2X2,
   List,
-  MoreHorizontal,
+  Pencil,
   Plus,
   Search,
 } from "lucide-react";
@@ -20,12 +20,17 @@ export default function Projects() {
 
   const [view, setView] = useState("grid");
   const [search, setSearch] = useState("");
+  const [renamingProject, setRenamingProject] = useState(null);
+  const [projectNameDraft, setProjectNameDraft] = useState("");
+  const [renameError, setRenameError] = useState("");
+  const [renameSaving, setRenameSaving] = useState(false);
 
   const {
     projects,
     loading,
     error,
     fetchProjects,
+    updateProject,
   } = useProjectStore();
 
   const openProjectModal = useProjectModalStore(
@@ -78,6 +83,32 @@ export default function Projects() {
     }
 
     navigate(`/projects/${projectId}/workspace`);
+  };
+
+  const openRename = (event, project) => {
+    event.stopPropagation();
+    setRenamingProject(project);
+    setProjectNameDraft(project.name || "");
+    setRenameError("");
+  };
+
+  const saveRename = async (event) => {
+    event.preventDefault();
+    const name = projectNameDraft.trim();
+    if (!name) {
+      setRenameError("Project name is required.");
+      return;
+    }
+    setRenameSaving(true);
+    setRenameError("");
+    try {
+      await updateProject(renamingProject.id, { name });
+      setRenamingProject(null);
+    } catch (error) {
+      setRenameError(error.response?.data?.message || error.message || "Could not rename project.");
+    } finally {
+      setRenameSaving(false);
+    }
   };
 
   return (
@@ -283,13 +314,13 @@ export default function Projects() {
 
                       <button
                         type="button"
-                        aria-label={`More options for ${project.name}`}
+                        aria-label={`Rename ${project.name}`}
                         onClick={(event) => {
-                          event.stopPropagation();
+                          openRename(event, project);
                         }}
                         className="absolute flex items-center justify-center transition rounded-lg opacity-0 right-3 top-3 h-9 w-9 bg-zinc-900/90 text-zinc-400 group-hover:opacity-100 hover:text-white"
                       >
-                        <MoreHorizontal size={18} />
+                        <Pencil size={16} />
                       </button>
                     </div>
 
@@ -382,13 +413,13 @@ export default function Projects() {
                     {/* More */}
                     <button
                       type="button"
-                      aria-label={`More options for ${project.name}`}
+                      aria-label={`Rename ${project.name}`}
                       onClick={(event) => {
-                        event.stopPropagation();
+                        openRename(event, project);
                       }}
                       className="flex items-center justify-center w-8 h-8 transition rounded-lg text-zinc-600 hover:bg-zinc-800 hover:text-white"
                     >
-                      <MoreHorizontal size={18} />
+                      <Pencil size={16} />
                     </button>
                   </div>
                 ))}
@@ -401,6 +432,23 @@ export default function Projects() {
           Create Project Modal
       --------------------------------- */}
       <ProjectModal />
+      {renamingProject && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4" role="presentation">
+          <button type="button" aria-label="Close rename dialog" onClick={() => !renameSaving && setRenamingProject(null)} className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+          <form onSubmit={saveRename} className="relative z-10 w-full max-w-md space-y-5 rounded-2xl border border-zinc-800 bg-zinc-950 p-6 shadow-2xl">
+            <div>
+              <h2 className="text-lg font-semibold text-white">Rename project</h2>
+              <p className="mt-1 text-sm text-zinc-500">The new name will appear in the workspace and project list.</p>
+            </div>
+            {renameError && <p role="alert" className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-400">{renameError}</p>}
+            <input autoFocus aria-label="Project name" maxLength={100} value={projectNameDraft} onChange={(event) => setProjectNameDraft(event.target.value)} disabled={renameSaving} className="h-11 w-full rounded-xl border border-zinc-800 bg-zinc-900 px-3 text-sm text-white outline-none focus:border-purple-500" />
+            <div className="flex justify-end gap-2">
+              <button type="button" disabled={renameSaving} onClick={() => setRenamingProject(null)} className="rounded-lg px-4 py-2 text-sm text-zinc-400 hover:text-white">Cancel</button>
+              <button type="submit" disabled={renameSaving || !projectNameDraft.trim()} className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{renameSaving ? "Saving…" : "Save name"}</button>
+            </div>
+          </form>
+        </div>
+      )}
     </>
   );
 }

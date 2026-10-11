@@ -7,6 +7,11 @@ export async function generateAIImage({
   quality,
   sceneId,
   projectId,
+  characterId,
+  characterIds,
+  sceneScript,
+  generationSource,
+  referenceImageIds,
 }) {
   if (!prompt || !prompt.trim()) {
     throw new Error("Image prompt is required.");
@@ -20,6 +25,11 @@ export async function generateAIImage({
       quality: quality || "standard",
       sceneId: sceneId || null,
       projectId: projectId || null,
+      characterId: characterId || null,
+      characterIds: Array.isArray(characterIds) ? characterIds : characterId ? [characterId] : [],
+      sceneScript: sceneScript || null,
+      generationSource: generationSource || (sceneId ? "storyboard" : "independent"),
+      referenceImageIds: Array.isArray(referenceImageIds) ? referenceImageIds : [],
     }, { timeout: 180000, headers: { "Idempotency-Key": crypto.randomUUID() } });
 
     const data = response.data?.data || response.data || null;
@@ -40,15 +50,39 @@ export async function generateAIImage({
       createdAt: data.createdAt || new Date().toISOString(),
     };
   } catch (error) {
-    console.error("Image generation failed:", error);
-
+    const responseData = error.response?.data || {};
     const message =
-      error.response?.data?.message ||
+      responseData.message ||
       error.message ||
       "Image generation failed.";
 
-    throw new Error(message, {
+    const generationError = new Error(message, {
       cause: error,
     });
+    generationError.status = error.response?.status || null;
+    generationError.requestId = responseData.requestId || null;
+    generationError.model = responseData.model || model || "black-forest-labs/flux-2-pro";
+    generationError.phase = responseData.phase || null;
+    generationError.providerStatus = responseData.providerStatus || null;
+    generationError.code = responseData.code || null;
+    generationError.provider = responseData.provider || null;
+    generationError.providerCode = responseData.providerCode || null;
+    generationError.moderationStage = responseData.moderationStage || null;
+    generationError.creditRefunded = responseData.creditRefunded ?? null;
+
+    if (import.meta.env.DEV) {
+      console.error("Image generation request failed", {
+        message,
+        httpStatus: generationError.status,
+        providerStatus: generationError.providerStatus,
+        requestId: generationError.requestId,
+        model: generationError.model,
+        phase: generationError.phase,
+        code: generationError.code,
+        providerCode: generationError.providerCode,
+        moderationStage: generationError.moderationStage,
+      });
+    }
+    throw generationError;
   }
 }

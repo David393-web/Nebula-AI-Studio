@@ -19,6 +19,7 @@ const generationRoutes = require("./routes/generation.routes");
 const videoGenerationRoutes = require("./routes/videoGeneration.routes");
 const creditsRoutes = require("./routes/credits.routes");
 const billingRoutes = require("./routes/billing.routes");
+const adminRoutes = require("./routes/admin.routes");
 
 const app = express();
 const allowedOrigins = (process.env.CLIENT_URL || "http://localhost:5173")
@@ -79,6 +80,8 @@ app.use("/api/generation", generationRoutes);
 app.use("/api/generation", videoGenerationRoutes);
 app.use("/api/credits", creditsRoutes);
 app.use("/api/billing", billingRoutes);
+app.use("/api/admin", adminRoutes);
+
 
 // Root route
 app.get("/", (req, res) => {

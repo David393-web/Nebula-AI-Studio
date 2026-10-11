@@ -4,6 +4,7 @@ export default function CharacterGrid({
   characters = [],
   onSelect,
   onDelete,
+  onEdit,
 }) {
   if (characters.length === 0) {
     return (
@@ -38,6 +39,7 @@ export default function CharacterGrid({
             character={character}
             onSelect={onSelect}
             onDelete={onDelete}
+            onEdit={onEdit}
           />
         );
       })}

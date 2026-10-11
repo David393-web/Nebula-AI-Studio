@@ -1,7 +1,7 @@
 const wanVideoProvider = require("../../providers/alibaba/wanVideo.provider");
 
 class VideoGenerationService {
-  async generate({ userId, imageUrl, prompt, duration, quality }) {
+  async generate({ userId, imageUrl, prompt, duration, quality, audio, requestedModel, onStarted, onProgress, generationId }) {
     if (!userId) {
       throw new Error("Authenticated user is required.");
     }
@@ -19,6 +19,11 @@ class VideoGenerationService {
       prompt,
       duration: Number(duration) || 5,
       resolution: quality,
+      audio,
+      requestedModel,
+      onStarted,
+      onProgress,
+      generationId,
     });
 
     return {

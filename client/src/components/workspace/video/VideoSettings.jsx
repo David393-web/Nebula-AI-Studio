@@ -5,6 +5,9 @@ export default function VideoSettings({
   onQualityChange,
   duration = "5",
   onDurationChange,
+  audioEnabled = true,
+  onAudioChange,
+  audioMode,
 }) {
   const qualities = [
     {
@@ -19,7 +22,7 @@ export default function VideoSettings({
     },
   ];
 
-  const durations = [
+  const presetDurations = [
     {
       value: "5",
       label: "5 seconds",
@@ -36,6 +39,9 @@ export default function VideoSettings({
       description: "Longest available",
     },
   ];
+  const durations = presetDurations.some((option) => option.value === String(duration))
+    ? presetDurations
+    : [{ value: String(duration), label: `${duration} seconds`, description: "Current storyboard scene duration" }, ...presetDurations];
 
   return (
     <div className="border rounded-2xl border-zinc-800 bg-zinc-900">
@@ -60,6 +66,13 @@ export default function VideoSettings({
       </div>
 
       <div className="p-5 space-y-6">
+        <div>
+          <p className="mb-3 text-xs font-medium text-zinc-300">Video audio</p>
+          <div className="grid grid-cols-2 gap-2">
+            {[{ value: true, label: "AI Audio" }, { value: false, label: "No Audio" }].map((option) => { const unsupported = audioMode === "none" ? option.value : audioMode === "automatic" && !option.value; return <button key={option.label} type="button" disabled={unsupported} onClick={() => onAudioChange?.(option.value)} aria-pressed={audioEnabled === option.value} className={`rounded-xl border px-3 py-3 text-sm ${audioEnabled === option.value ? "border-purple-500 bg-purple-500/10 text-purple-200" : "border-zinc-800 bg-zinc-950 text-zinc-400"} disabled:cursor-not-allowed disabled:opacity-40`}>{option.label}</button>; })}
+          </div>
+          <p className="mt-2 text-[10px] leading-4 text-zinc-600">{audioMode === "automatic" ? "This model always generates audio." : audioMode === "none" ? "This model produces silent video." : "Wan generates sound from the scene prompt. Individual scenes can override this setting."}</p>
+        </div>
         {/* Quality */}
         <div>
           <div className="flex items-center gap-2 mb-3">

@@ -42,6 +42,7 @@ model User {
   avatarUrl    String?
   role         UserRole @default(USER)
   onboardingCompleted Boolean @default(false)
+  emailVerifiedAt DateTime?
 
   projects   Project[]
   assets     Asset[]
@@ -53,10 +54,48 @@ model User {
   creditAccount CreditAccount?
   creditTransactions CreditTransaction[]
   payments Payment[]
+  launchEmailLogs LaunchEmailLog[]
+  generationPresets GenerationPreset[]
+  emailVerification EmailVerification?
+  passwordReset PasswordReset?
   
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model EmailVerification {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  codeHash       String
+  salt           String
+  attempts       Int      @default(0)
+  expiresAt      DateTime
+  lastSentAt     DateTime
+  windowStartedAt DateTime
+  resendCount    Int      @default(1)
+  consumedAt     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+}
+
+model PasswordReset {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  tokenHash      String   @unique
+  expiresAt      DateTime
+  requestedAt    DateTime
+  windowStartedAt DateTime
+  requestCount   Int      @default(1)
+  consumedAt     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
 }
 
 model CreditAccount {
@@ -107,6 +146,7 @@ model Project {
   id          String        @id @default(cuid())
   name        String
   description String?
+  script      String?
   status      ProjectStatus @default(DRAFT)
 
   ownerId String
@@ -252,4 +292,36 @@ model Video {
 
   @@index([userId])
   @@index([projectId])
+}
+
+model LaunchEmailLog {
+  id                String   @id @default(cuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  email             String
+  campaign          String
+  status            String   @default("PENDING")
+  providerMessageId String?
+  error             String?
+  sentAt            DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([userId, campaign])
+  @@index([campaign, status])
+}
+
+model GenerationPreset {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  type      String
+  category  String   @default("Custom")
+  settings  Json
+  favorite  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type, category])
 }

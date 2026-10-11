@@ -6,21 +6,23 @@ import {
   deleteProject as deleteProjectApi,
 } from "../../services/project";
 
+let projectMutationVersion = 0;
+
 const useProjectStore = create((set) => ({
   projects: [],
   loading: false,
   error: null,
 
   fetchProjects: async () => {
+    const requestVersion = projectMutationVersion;
     set({ loading: true, error: null });
 
     try {
       const projects = await getProjects();
 
-      set({
-        projects,
-        loading: false,
-      });
+      set((state) => requestVersion === projectMutationVersion
+        ? { projects, loading: false }
+        : { loading: false, projects: state.projects });
     } catch (error) {
       console.error("Failed to fetch projects:", error);
 
@@ -47,12 +49,18 @@ const useProjectStore = create((set) => ({
   },
 
   updateProject: async (id, projectData) => {
+    projectMutationVersion += 1;
     try {
       const updatedProject = await updateProjectApi(id, projectData);
 
+      if (!updatedProject) {
+        throw new Error("Project update returned no saved project.");
+      }
+      projectMutationVersion += 1;
+
       set((state) => ({
         projects: state.projects.map((project) =>
-          project.id === id ? updatedProject : project
+          project.id === id ? { ...project, ...updatedProject } : project
         ),
       }));
 

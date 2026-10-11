@@ -2,47 +2,57 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 
 const userRepository = require("../../repositories/UserRepository");
+const emailVerification = require("../Email/emailVerification.service");
 
 class AuthService {
+  constructor({ repository = userRepository, verification = emailVerification } = {}) {
+    this.userRepository = repository;
+    this.emailVerification = verification;
+  }
+
   async register({ email, password, name }) {
     email = String(email || "").trim().toLowerCase();
-    const existingUser = await userRepository.findByEmail(email);
+    const existingUser = await this.userRepository.findByEmail(email);
 
     if (existingUser) {
-      const error = new Error("Email is already registered");
-      error.status = 409;
-      throw error;
+      if (existingUser.emailVerifiedAt == null && await bcrypt.compare(password, existingUser.passwordHash)) {
+        let delivery = { sent: false };
+        try { delivery = await this.emailVerification.issue(existingUser); } catch (error) {
+          console.error("Registration verification request failed", { code: error?.providerCode || error?.code || "EMAIL_VERIFICATION_FAILURE" });
+        }
+        return { user: this.sanitizeUser(existingUser), created: false, verificationSent: delivery.sent };
+      }
+      return { user: null, created: false, verificationSent: false };
     }
 
     const passwordHash = await bcrypt.hash(password, 12);
 
     let user;
     try {
-      user = await userRepository.createUser({
+      user = await this.userRepository.createUser({
         email,
         passwordHash,
         name: typeof name === "string" ? name.trim() : name,
       });
     } catch (error) {
       if (error?.code === "P2002") {
-        const conflict = new Error("Email is already registered");
-        conflict.status = 409;
-        throw conflict;
+        // A concurrent registration may have won the unique-email race. Keep the
+        // response indistinguishable from other registration outcomes.
+        return { user: null, created: false, verificationSent: false };
       }
       throw error;
     }
 
-    const token = this.generateToken(user);
-
-    return {
-      user: this.sanitizeUser(user),
-      token,
-    };
+    let delivery = { sent: false };
+    try { delivery = await this.emailVerification.issue(user); } catch (error) {
+      console.error("Registration verification request failed", { code: error?.providerCode || error?.code || "EMAIL_VERIFICATION_FAILURE" });
+    }
+    return { user: this.sanitizeUser(user), created: true, verificationSent: delivery.sent };
   }
 
   async login({ email, password }) {
     email = String(email || "").trim().toLowerCase();
-    const user = await userRepository.findByEmail(email);
+    const user = await this.userRepository.findByEmail(email);
 
     if (!user) {
       const error = new Error("Invalid email or password");
@@ -61,12 +71,27 @@ class AuthService {
       throw error;
     }
 
+    if (user.emailVerifiedAt === null) {
+      const error = new Error("Email verification is required before signing in.");
+      error.status = 403;
+      error.code = "EMAIL_NOT_VERIFIED";
+      throw error;
+    }
+
     const token = this.generateToken(user);
 
     return {
       user: this.sanitizeUser(user),
       token,
     };
+  }
+
+  async resendVerification(email) {
+    return this.emailVerification.resend(email);
+  }
+
+  async verifyEmail(email, code) {
+    return this.emailVerification.verify(email, code);
   }
 
   async getUserById(id) {
@@ -76,7 +101,7 @@ class AuthService {
       throw error;
     }
 
-    const user = await userRepository.findById(id);
+    const user = await this.userRepository.findById(id);
 
     if (!user) {
       const error = new Error("User not found");
@@ -93,12 +118,12 @@ class AuthService {
       error.status = 400;
       throw error;
     }
-    const user = await userRepository.updateUser(id, { name: name.trim() });
+    const user = await this.userRepository.updateUser(id, { name: name.trim() });
     return this.sanitizeUser(user);
   }
 
   async completeOnboarding(id) {
-    const user = await userRepository.updateUser(id, { onboardingCompleted: true });
+    const user = await this.userRepository.updateUser(id, { onboardingCompleted: true });
     return this.sanitizeUser(user);
   }
 
@@ -108,14 +133,14 @@ class AuthService {
       error.status = 400;
       throw error;
     }
-    const user = await userRepository.findById(id);
+    const user = await this.userRepository.findById(id);
     if (!user || !(await bcrypt.compare(currentPassword || "", user.passwordHash))) {
       const error = new Error("Current password is incorrect.");
       error.status = 400;
       throw error;
     }
     const passwordHash = await bcrypt.hash(newPassword, 12);
-    await userRepository.updateUser(id, { passwordHash });
+    await this.userRepository.updateUser(id, { passwordHash });
   }
 
   generateToken(user) {
@@ -152,4 +177,6 @@ class AuthService {
   }
 }
 
-module.exports = new AuthService();
+const authService = new AuthService();
+module.exports = authService;
+module.exports.AuthService = AuthService;

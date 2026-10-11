@@ -1,7 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-export default function PromptBox({ onPromptChange }) {
-  const [prompt, setPrompt] = useState("");
+export default function PromptBox({ initialPrompt = "", onPromptChange }) {
+  const [prompt, setPrompt] = useState(initialPrompt);
+
+  useEffect(() => {
+    setPrompt(initialPrompt || "");
+  }, [initialPrompt]);
 
   const handleChange = (event) => {
     const value = event.target.value;
@@ -26,6 +30,7 @@ export default function PromptBox({ onPromptChange }) {
       </div>
 
       <textarea
+        id="generation-prompt"
         value={prompt}
         onChange={handleChange}
         rows={7}

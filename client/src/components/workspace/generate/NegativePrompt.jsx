@@ -1,12 +1,13 @@
 import { useState } from "react";
 
-export default function NegativePrompt({ onNegativePromptChange }) {
-  const [negativePrompt, setNegativePrompt] = useState("");
+export default function NegativePrompt({ value, onNegativePromptChange }) {
+  const [localPrompt, setLocalPrompt] = useState("");
+  const negativePrompt = value ?? localPrompt;
 
   const handleChange = (event) => {
     const value = event.target.value;
 
-    setNegativePrompt(value);
+    setLocalPrompt(value);
 
     if (onNegativePromptChange) {
       onNegativePromptChange(value);

@@ -24,6 +24,7 @@ class UserRepository {
           email: String(email || "").trim().toLowerCase(),
           passwordHash,
           name,
+          emailVerifiedAt: null,
         },
       });
       await tx.creditAccount.create({ data: { userId: user.id, balance: 50 } });

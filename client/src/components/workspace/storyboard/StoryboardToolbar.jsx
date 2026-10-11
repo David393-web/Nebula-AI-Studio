@@ -1,15 +1,19 @@
 import {
   Plus,
-  Sparkles,
+  Video,
   LayoutList,
   RefreshCw,
 } from "lucide-react";
+import FileDropzone from "@/components/media/FileDropzone";
 
 export default function StoryboardToolbar({
   sceneCount = 0,
   onAddScene,
   onGenerateAll,
   onRefresh,
+  onAddManyScenes,
+  onImportFiles,
+  importProgress = "",
   loading = false,
 }) {
   const hasScenes = sceneCount > 0;
@@ -45,7 +49,7 @@ export default function StoryboardToolbar({
       </div>
 
       {/* Right Side */}
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {/* Refresh */}
         {onRefresh && (
           <button
@@ -79,6 +83,8 @@ export default function StoryboardToolbar({
             Add Scene
           </button>
         )}
+        {onAddManyScenes && <button type="button" onClick={onAddManyScenes} disabled={loading} className="rounded-lg border border-zinc-700 px-3 py-2.5 text-xs text-zinc-300 hover:bg-zinc-800">Add 3 blank scenes</button>}
+        {onImportFiles && <FileDropzone onFiles={onImportFiles} label="Import scenes" description="Drop one or more scene images" className="min-w-44" disabled={loading} />}
 
         {/* Generate All */}
         {onGenerateAll && (
@@ -90,14 +96,15 @@ export default function StoryboardToolbar({
             }
             className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-white transition bg-purple-600 rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Sparkles size={16} />
+            <Video size={16} />
 
             {loading
               ? "Loading..."
-              : "Generate All"}
+              : "Open video generator"}
           </button>
         )}
       </div>
+      {importProgress && <p role="status" className="basis-full text-xs text-violet-300">{importProgress}</p>}
     </div>
   );
 }

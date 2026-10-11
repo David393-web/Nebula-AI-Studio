@@ -16,10 +16,19 @@ import VideoSettings from "./VideoSettings";
 import VideoPreview from "./VideoPreview";
 
 import api from "@/services/api";
+import { buildVisualScenePrompt, getSceneCharacters, normalizeSceneScript } from "@/utils/sceneScript";
+
+function prettyModelName(model) {
+  return String(model || "Alibaba video model")
+    .replace(/^wanx?/, "Wan ")
+    .replace(/-i2v/, " I2V")
+    .replaceAll("-", " ");
+}
 
 export default function VideoPanel({
   scenes = [],
   projectId,
+  storyScript = "",
   onGenerateVideo,
 }) {
   const [videoLoading, setVideoLoading] = useState(false);
@@ -27,19 +36,23 @@ export default function VideoPanel({
 
   const [quality, setQuality] = useState("720P");
   const [duration, setDuration] = useState("5");
-  const [creditCost, setCreditCost] = useState(null);
+  const [audioEnabled, setAudioEnabled] = useState(true);
+  const [videoCosts, setVideoCosts] = useState(null);
 
   const [isGenerating, setIsGenerating] = useState(false);
-  const [generatedVideo, setGeneratedVideo] = useState(null);
+  const [generatedVideos, setGeneratedVideos] = useState([]);
+  const [sceneProgress, setSceneProgress] = useState(null);
   const [generationError, setGenerationError] = useState("");
+  const [sceneStatuses, setSceneStatuses] = useState({});
+  const [providerStatus, setProviderStatus] = useState(null);
 
   useEffect(() => {
-    let active = true;
-    api.get(`/credits/costs?duration=${encodeURIComponent(duration)}`)
-      .then((response) => { if (active) setCreditCost(response.data?.data?.costs?.video ?? null); })
-      .catch(() => {});
-    return () => { active = false; };
-  }, [duration]);
+    const durations = Array.from(new Set([duration, ...scenes.map((scene) => scene.durationSeconds || duration)].map((value) => Math.min(15, Math.max(2, Number(value) || 5)))));
+    Promise.all(durations.map(async (seconds) => {
+      const { data } = await api.get(`/credits/costs?duration=${seconds}`);
+      return [seconds, data?.data?.costs || null];
+    })).then((rows) => setVideoCosts(Object.fromEntries(rows))).catch(() => {});
+  }, [duration, scenes]);
 
   /*
    * --------------------------------
@@ -69,33 +82,18 @@ export default function VideoPanel({
         }
 
         if (videos.length === 0) {
-          setGeneratedVideo(null);
+          setGeneratedVideos([]);
           return;
         }
 
-        const latestVideo = [...videos]
-          .filter(Boolean)
-          .sort(
-            (a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0),
-          )[0];
-
-        if (!latestVideo) {
-          return;
-        }
-
-        const normalizedVideo = {
-          ...latestVideo,
-          id: latestVideo.id,
-          type: "video",
-          url:
-            latestVideo.url ||
-            latestVideo.videoUrl ||
-            latestVideo.outputUrl ||
-            latestVideo.generatedUrl ||
-            null,
-        };
-
-        setGeneratedVideo(normalizedVideo);
+        setGeneratedVideos(videos.filter(Boolean).map((video) => ({
+          ...video, id: video.id, type: "video",
+          url: video.url || video.videoUrl || video.outputUrl || video.generatedUrl || null,
+          model: video.model || video.metadata?.selectedModel || video.metadata?.model,
+          fallbackUsed: video.fallbackUsed ?? video.metadata?.fallbackUsed ?? false,
+          audioRequested: video.audioRequested ?? video.metadata?.audioRequested ?? video.metadata?.audio,
+          audioGenerated: video.audioGenerated ?? video.metadata?.audioGenerated ?? video.metadata?.audio,
+        })));
       } catch (error) {
         console.error("Failed to load saved video:", error);
 
@@ -127,25 +125,13 @@ export default function VideoPanel({
    */
   const generatedScenes = useMemo(
     () =>
-      scenes.filter(
-        (scene) =>
-          scene?.generatedUrl ||
-          scene?.image ||
-          scene?.imageUrl ||
-          scene?.video,
-      ),
+      scenes.filter((scene) => getSceneImageUrl(scene)),
     [scenes],
   );
 
   const pendingScenes = useMemo(
     () =>
-      scenes.filter(
-        (scene) =>
-          !scene?.generatedUrl &&
-          !scene?.image &&
-          !scene?.imageUrl &&
-          !scene?.video,
-      ),
+      scenes.filter((scene) => !getSceneImageUrl(scene)),
     [scenes],
   );
 
@@ -153,9 +139,10 @@ export default function VideoPanel({
     const characterMap = new Map();
 
     scenes.forEach((scene) => {
-      if (scene?.character?.id) {
-        characterMap.set(scene.character.id, scene.character);
-      }
+      getSceneCharacters(scene).forEach((character) => {
+        const key = character.id || character.name;
+        if (key) characterMap.set(key, character);
+      });
     });
 
     return Array.from(characterMap.values());
@@ -178,102 +165,109 @@ export default function VideoPanel({
    * Generate Video
    * --------------------------------
    *
-   * The current Wan 2.2 integration generates
-   * one video clip from one storyboard image.
-   *
-   * We use the first generated storyboard scene
-   * for this MVP video-generation step.
+   * Generate one provider clip for each scene that has a source image.
    */
   const handleGenerateVideo = async () => {
     if (!canGenerate) {
       return;
     }
-
-    const sourceScene = generatedScenes[0];
-
-    if (!sourceScene) {
-      setGenerationError(
-        "A generated storyboard image is required before creating a video.",
-      );
-      return;
-    }
-
-    const imageUrl =
-      sourceScene.generatedUrl ||
-      sourceScene.imageUrl ||
-      sourceScene.image ||
-      null;
-
-    if (!imageUrl) {
-      setGenerationError(
-        "The selected storyboard scene does not contain a usable image.",
-      );
-      return;
-    }
-
-    const videoPrompt =
-      sourceScene.prompt ||
-      sourceScene.description ||
-      sourceScene.title ||
-      sourceScene.name ||
-      "Create a cinematic video from this storyboard scene.";
-
+    const scenesToRender = generatedScenes;
     setIsGenerating(true);
-    setGeneratedVideo(null);
     setGenerationError("");
+    setProviderStatus(null);
+    setSceneProgress({ current: 0, total: scenesToRender.length, title: "Preparing scenes" });
+    setSceneStatuses(Object.fromEntries(scenesToRender.map((scene) => [scene.id, "Waiting"])));
+    const failed = [];
 
-    try {
-      const response = await api.post(
-        "/generation/video",
-        {
+    for (const [index, sourceScene] of scenesToRender.entries()) {
+      const imageUrl = getSceneImageUrl(sourceScene);
+      const sceneDuration = Math.min(15, Math.max(2, Number(sourceScene.durationSeconds) || Number(duration) || 5));
+      const sceneCharacters = getSceneCharacters(sourceScene);
+      const sceneAudio = sourceScene.audioMode === "audio" ? true : sourceScene.audioMode === "silent" ? false : audioEnabled;
+      const scriptBlocks = normalizeSceneScript(sourceScene.sceneScript || sourceScene.metadata?.sceneScript).blocks;
+      const scriptAudio = scriptBlocks.filter((block) => ["dialogue", "narration", "audio"].includes(block.type) && block.text.trim()).map((block) => {
+        const label = block.type.toUpperCase();
+        const character = block.characterName ? ` (${block.characterName})` : "";
+        return `${label}${character}: ${block.text.trim()}`;
+      }).join("\n");
+      const audioPrompt = [sourceScene.audioPrompt, scriptAudio].filter(Boolean).join("\n\n");
+      const storyCharacterNames = scenes.flatMap((scene) => getSceneCharacters(scene).map((character) => character.name));
+      const storyBlockNames = scenes.flatMap((scene) => normalizeSceneScript(scene.sceneScript || scene.metadata?.sceneScript).blocks.map((block) => block.characterName));
+      const videoPrompt = buildVisualScenePrompt({
+        title: `Scene ${index + 1}: ${sourceScene.title || sourceScene.name || "Storyboard scene"}`,
+        story: storyScript,
+        direction: sourceScene.prompt || sourceScene.description || sourceScene.title || "Create natural cinematic motion from the source image.",
+        notes: sourceScene.notes || "",
+        sceneScript: sourceScene.sceneScript || sourceScene.metadata?.sceneScript,
+        characters: sceneCharacters,
+        characterNames: [...storyCharacterNames, ...storyBlockNames],
+        referencePolicy: "Use the supplied storyboard frame as the visual source. Preserve the scene composition, environment and visible character identities, and animate the characters naturally. Character names are internal identifiers only.",
+      });
+      setSceneProgress({ current: index + 1, total: scenesToRender.length, title: sourceScene.title || sourceScene.name || "Scene " + (index + 1) });
+      setSceneStatuses((current) => ({ ...current, [sourceScene.id]: "Generating" }));
+      const generationId = crypto.randomUUID();
+      let pollingStatus = true;
+      let statusTimer = null;
+      const pollProviderStatus = async () => {
+        try {
+          const response = await api.get(`/generation/video/status/${encodeURIComponent(generationId)}`);
+          if (pollingStatus && response.data?.data) setProviderStatus(response.data.data);
+        } catch {
+          // The generation request may not have reached its provider preflight yet.
+        } finally {
+          if (pollingStatus) statusTimer = window.setTimeout(pollProviderStatus, 900);
+        }
+      };
+      void pollProviderStatus();
+      try {
+        const response = await api.post("/generation/video", {
           projectId,
           sceneId: sourceScene.id || null,
+          imageId: sourceScene.imageId || (sourceScene.generatedType === "image" ? sourceScene.generatedId : null),
           imageUrl,
           prompt: videoPrompt,
-          duration: Number(duration) || 5,
+          duration: sceneDuration,
           quality,
-        },
-        {
-          timeout: 360000,
-          headers: { "Idempotency-Key": crypto.randomUUID() },
-        },
-      );
-
-      const data = response.data?.data || response.data || null;
-
-      if (!data?.url) {
-        throw new Error(
-          "Video generation completed but no video URL was returned.",
-        );
+          audio: sceneAudio,
+          audioPrompt,
+          characterIds: sceneCharacters.map((character) => character.id).filter(Boolean),
+          sceneScript: sourceScene.sceneScript || sourceScene.metadata?.sceneScript || { version: 1, blocks: [] },
+          generationSource: "storyboard",
+        }, { timeout: 360000, headers: { "Idempotency-Key": generationId } });
+        const data = response.data?.data || response.data || null;
+        if (!data?.url) throw new Error("The provider returned no video for this scene.");
+        const result = { ...data, id: data.id || null, type: "video", url: data.url, projectId, sceneId: data.sceneId || sourceScene.id || null, quality, duration: Number(data.duration) || sceneDuration, createdAt: data.createdAt || new Date().toISOString(), sceneTitle: sourceScene.title || sourceScene.name || "Scene " + (index + 1) };
+        setGeneratedVideos((current) => [result, ...current.filter((item) => item.sceneId !== result.sceneId)]);
+        onGenerateVideo?.(result);
+        setSceneStatuses((current) => ({ ...current, [sourceScene.id]: "Completed" }));
+      } catch (error) {
+        const providerError = error.response?.data;
+        const message = [
+          providerError?.message || error.message || "Video generation failed.",
+          providerError?.providerStatus ? `Provider HTTP ${providerError.providerStatus}` : null,
+          providerError?.providerCode ? `code ${providerError.providerCode}` : null,
+          providerError?.requestId ? `request ${providerError.requestId}` : null,
+        ].filter(Boolean).join(" — ");
+        console.error("Storyboard scene video generation failed:", {
+          sceneId: sourceScene.id,
+          message,
+          httpStatus: error.response?.status || null,
+          provider: providerError?.provider || null,
+          providerStatus: providerError?.providerStatus || null,
+          providerCode: providerError?.providerCode || null,
+          requestId: providerError?.requestId || null,
+        });
+        failed.push(`${sourceScene.title || sourceScene.name || "Scene " + (index + 1)}: ${message}`);
+        setSceneStatuses((current) => ({ ...current, [sourceScene.id]: "Failed" }));
+      } finally {
+        pollingStatus = false;
+        if (statusTimer) window.clearTimeout(statusTimer);
+        setProviderStatus(null);
       }
-
-      const result = {
-        ...data,
-        id: data.id || null,
-        type: "video",
-        url: data.url,
-        projectId,
-        sceneId: data.sceneId || sourceScene.id || null,
-        quality,
-        duration: Number(data.duration) || Number(duration) || 5,
-        sceneCount,
-        createdAt: data.createdAt || new Date().toISOString(),
-      };
-
-      setGeneratedVideo(result);
-
-      onGenerateVideo?.(result);
-    } catch (error) {
-      console.error("Video generation failed:", error);
-
-      setGenerationError(
-        error.response?.data?.message ||
-          error.message ||
-          "Video generation failed. Please try again.",
-      );
-    } finally {
-      setIsGenerating(false);
     }
+    setIsGenerating(false);
+    setSceneProgress(null);
+    setGenerationError(failed.length ? "Could not generate " + failed.length + " scene clip(s): " + failed.join("; ") + ". Other scene clips are saved." : "");
   };
 
   /*
@@ -401,6 +395,8 @@ export default function VideoPanel({
             duration={duration}
             onQualityChange={setQuality}
             onDurationChange={setDuration}
+            audioEnabled={audioEnabled}
+            onAudioChange={setAudioEnabled}
           />
         </div>
 
@@ -471,8 +467,7 @@ export default function VideoPanel({
               </h3>
 
               <p className="mt-1 text-xs leading-5 text-zinc-500">
-                Nebula will use the first generated storyboard image as the
-                starting frame for the AI video clip.
+                Every scene uses its selected or generated image as its own starting frame.
               </p>
             </div>
           </div>
@@ -482,48 +477,21 @@ export default function VideoPanel({
               <Video size={15} className="text-zinc-500" />
 
               <span className="text-xs font-medium text-zinc-400">
-                Source Scene
+                Scenes with images
               </span>
             </div>
 
-            {generatedScenes[0] ? (
-              <div className="overflow-hidden border rounded-xl border-zinc-800 bg-zinc-950">
-                <div className="aspect-video bg-zinc-900">
-                  {(generatedScenes[0].generatedUrl ||
-                    generatedScenes[0].imageUrl ||
-                    generatedScenes[0].image) && (
-                    <img
-                      src={
-                        generatedScenes[0].generatedUrl ||
-                        generatedScenes[0].imageUrl ||
-                        generatedScenes[0].image
-                      }
-                      alt={
-                        generatedScenes[0].title ||
-                        generatedScenes[0].name ||
-                        "Storyboard scene"
-                      }
-                      className="object-cover w-full h-full"
-                    />
-                  )}
-                </div>
-
-                <div className="p-3">
-                  <p className="text-sm font-medium text-white truncate">
-                    {generatedScenes[0].title ||
-                      generatedScenes[0].name ||
-                      "Storyboard Scene 1"}
-                  </p>
-
-                  <p className="mt-1 text-[11px] text-zinc-600">
-                    Starting frame
-                  </p>
-                </div>
+            {generatedScenes.length > 0 ? (
+              <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
+                {generatedScenes.map((scene, index) => <div key={scene.id || index} className="flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-950 p-2">
+                  <img src={getSceneImageUrl(scene)} alt={scene.title || "Scene reference"} className="h-14 w-20 rounded-lg bg-black object-cover" loading="lazy"/>
+                  <div className="min-w-0 flex-1"><p className="truncate text-xs font-medium text-white">{scene.title || scene.name || "Scene " + (index + 1)}</p><p className="mt-1 text-[11px] text-zinc-500">{scene.durationSeconds || duration}s clip · {scene.character?.name || "No character assigned"} · {scene.audioMode === "silent" || (scene.audioMode === "inherit" && !audioEnabled) ? "No Audio" : "AI Audio"}</p><p className="mt-1 text-[10px] text-violet-300">{sceneStatuses[scene.id] || "Waiting"}</p></div>
+                </div>)}
               </div>
             ) : (
               <div className="p-4 border border-dashed rounded-xl border-zinc-800">
                 <p className="text-xs text-zinc-600">
-                  Generate at least one storyboard image first.
+                  Add a library image to a scene or generate its scene image first.
                 </p>
               </div>
             )}
@@ -556,8 +524,7 @@ export default function VideoPanel({
               </h3>
 
               <p className="mt-1 text-xs leading-5 text-zinc-500">
-                Create a cinematic video clip from your first generated
-                storyboard image.
+                Create a separate video clip for each scene image. Each scene uses its own duration and direction.
               </p>
             </div>
           </div>
@@ -570,8 +537,8 @@ export default function VideoPanel({
 
             <p className="text-[11px] text-zinc-500">
               {canGenerate
-                ? "Ready to generate a video clip."
-                : "Generate a storyboard image before continuing."}
+                ? readyCount + " scene clip" + (readyCount === 1 ? " is" : "s are") + " ready."
+                : "Attach or generate an image for a storyboard scene first."}
             </p>
           </div>
 
@@ -583,8 +550,17 @@ export default function VideoPanel({
           >
             <Sparkles size={17} />
 
-            {isGenerating ? "Generating Video..." : `Generate Video Clip${creditCost ? ` · ${creditCost} credits` : ""}`}
+            {isGenerating ? "Generating scene " + sceneProgress?.current + " of " + sceneProgress?.total + "…" : "Generate " + readyCount + " scene video" + (readyCount === 1 ? "" : "s")}
           </button>
+
+          {sceneProgress && <p role="status" className="mt-2 text-xs text-violet-300">{providerStatus?.state === "switching"
+            ? `Primary model unavailable. Switching to ${prettyModelName(providerStatus.nextModel)}…`
+            : providerStatus?.state === "backup"
+              ? `Using backup model ${prettyModelName(providerStatus.model)}…`
+              : providerStatus?.model
+                ? `Generating with ${prettyModelName(providerStatus.model)}…`
+                : "Preparing Alibaba video generation…"} · Scene {sceneProgress.current} of {sceneProgress.total}: {sceneProgress.title}</p>}
+          {videoCosts && <p className="mt-2 text-xs text-zinc-500">Estimated queue cost: {generatedScenes.reduce((total, scene) => { const sceneDuration = Math.min(15, Math.max(2, Number(scene.durationSeconds) || Number(duration) || 5)); const costs = videoCosts[sceneDuration] || {}; return total + ((scene.audioMode === "silent" || (scene.audioMode === "inherit" && !audioEnabled)) ? costs.videoSilent || 0 : costs.videoAudio || 0); }, 0)} credits</p>}
 
           {!projectId && (
             <p className="mt-3 text-[11px] text-red-400">
@@ -594,9 +570,7 @@ export default function VideoPanel({
 
           {pendingCount > 0 && (
             <p className="mt-3 text-[11px] leading-5 text-amber-400">
-              {pendingCount} storyboard scene
-              {pendingCount === 1 ? "" : "s"} still need generated imagery. The
-              first completed scene can still be used for this video clip.
+              {pendingCount} scene{pendingCount === 1 ? "" : "s"} need an image. Add an image or generate one from the scene editor.
             </p>
           )}
 
@@ -639,9 +613,7 @@ export default function VideoPanel({
 
                 <SummaryRow
                   label="Duration"
-                  value={
-                    `${duration} seconds`
-                  }
+                  value={generatedScenes.reduce((total, scene) => total + (Number(scene.durationSeconds) || Number(duration) || 5), 0) + " seconds total"}
                 />
               </div>
             </div>
@@ -649,18 +621,18 @@ export default function VideoPanel({
         </div>
 
         {/* Generated Video */}
-        {generatedVideo && (
+        {generatedVideos.length > 0 && (
           <div className="border xl:col-span-12 rounded-2xl border-zinc-800 bg-zinc-900">
             <div className="flex flex-col gap-3 px-5 py-4 border-b border-zinc-800 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div className="flex items-center gap-2">
                   <CheckCircle2 size={17} className="text-emerald-400" />
 
-                  <h3 className="font-semibold text-white">Video Generated</h3>
+                  <h3 className="font-semibold text-white">Scene video clips</h3>
                 </div>
 
                 <p className="mt-1 text-xs text-zinc-500">
-                  Your AI-generated video clip is ready.
+                  {generatedVideos.length} saved scene clip{generatedVideos.length === 1 ? "" : "s"}. Each clip remains linked to its storyboard scene.
                 </p>
               </div>
 
@@ -669,14 +641,11 @@ export default function VideoPanel({
               </span>
             </div>
 
-            <div className="p-5">
-              {generatedVideo.url ? (
-                <VideoPreview video={generatedVideo} />
-              ) : (
-                <div className="p-5 text-sm text-zinc-500">
-                  Video generated, but the preview URL is unavailable.
-                </div>
-              )}
+            <div className="grid gap-4 p-5 md:grid-cols-2">
+              {generatedVideos.map((video) => <article key={video.id || video.sceneId} className="rounded-xl border border-zinc-800 bg-zinc-950 p-3">
+                <div className="mb-2 flex justify-between gap-3"><h4 className="truncate text-sm font-medium text-white">{video.sceneTitle || video.name || "Storyboard scene"}</h4><span className="shrink-0 text-xs text-zinc-500">{video.duration}s</span></div>
+                {video.url ? <VideoPreview video={video} /> : <p className="text-xs text-zinc-500">Preview unavailable.</p>}
+              </article>)}
             </div>
           </div>
         )}
@@ -737,4 +706,10 @@ function SummaryRow({ label, value }) {
       <span className="text-xs font-medium text-zinc-300">{value}</span>
     </div>
   );
+}
+
+function getSceneImageUrl(scene) {
+  if (scene?.imageUrl || scene?.image) return scene.imageUrl || scene.image;
+  if (scene?.generatedType === "image") return scene.generatedUrl || scene.generatedImageUrl || null;
+  return null;
 }

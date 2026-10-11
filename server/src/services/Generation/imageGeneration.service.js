@@ -9,6 +9,8 @@ class ImageGenerationService {
     model,
     ratio,
     quality,
+    characterImageUrl,
+    referenceImageUrls = [],
   }) {
     if (!userId) {
       throw new Error("Authenticated user is required.");
@@ -36,6 +38,7 @@ class ImageGenerationService {
             : String(quality || "standard").toLowerCase() === "standard"
               ? 70
               : 80,
+        inputImages: [...new Set([...(Array.isArray(referenceImageUrls) ? referenceImageUrls : []), ...(characterImageUrl ? [characterImageUrl] : [])])],
       });
 
     return {
@@ -45,19 +48,16 @@ class ImageGenerationService {
     };
   }
 
-  async editImage({ userId, prompt, imageUrl, variations = 1 }) {
+  async editImage({ userId, prompt, imageUrl }) {
     if (!userId || !imageUrl || typeof prompt !== "string" || !prompt.trim()) {
       throw new Error("An image and a clear editing instruction are required.");
     }
-    const count = Math.max(1, Math.min(4, Number(variations) || 1));
-    const results = [];
-    for (let index = 0; index < count; index += 1) {
-      const result = await replicateImageProvider.generateImage({
-        prompt: prompt.trim(), aspectRatio: "match_input_image", inputImages: [imageUrl],
-      });
-      results.push(result);
-    }
-    return results;
+    const result = await replicateImageProvider.generateImage({
+      prompt: prompt.trim(),
+      aspectRatio: "match_input_image",
+      inputImages: [imageUrl],
+    });
+    return [result];
   }
 }
 

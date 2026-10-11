@@ -1,4 +1,11 @@
 import api from "./api";
+import { resolveMediaUrl } from "@/utils/mediaUrl";
+
+function normalizeCharacter(character) {
+  if (!character) return character;
+  const imageUrl = resolveMediaUrl(character.imageUrl || character.image);
+  return { ...character, imageUrl, image: imageUrl };
+}
 
 /*
  * Get all characters for the current user.
@@ -6,11 +13,12 @@ import api from "./api";
 export async function getCharacters() {
   const response = await api.get("/characters");
 
-  return (
+  const characters = (
     response.data?.data?.characters ||
     response.data?.data ||
     []
   );
+  return Array.isArray(characters) ? characters.map(normalizeCharacter) : [];
 }
 
 /*
@@ -21,7 +29,7 @@ export async function getCharacter(id) {
     `/characters/${id}`,
   );
 
-  return (
+  return normalizeCharacter(
     response.data?.data?.character ||
     response.data?.data ||
     null
@@ -39,7 +47,7 @@ export async function createCharacter(
     characterData,
   );
 
-  return (
+  return normalizeCharacter(
     response.data?.data?.character ||
     response.data?.data ||
     null
@@ -58,7 +66,7 @@ export async function updateCharacter(
     characterData,
   );
 
-  return (
+  return normalizeCharacter(
     response.data?.data?.character ||
     response.data?.data ||
     null

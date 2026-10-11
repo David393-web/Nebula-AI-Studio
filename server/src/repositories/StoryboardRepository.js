@@ -7,14 +7,10 @@ class StoryboardRepository {
     });
   }
 
-  async findById(id) {
-    return prisma.storyboard.findUnique({
-      where: {
-        id,
-      },
-      include: {
-        project: true,
-      },
+  async findById(id, userId) {
+    return prisma.storyboard.findFirst({
+      where: { id, ...(userId ? { userId } : {}) },
+      include: { project: true },
     });
   }
 

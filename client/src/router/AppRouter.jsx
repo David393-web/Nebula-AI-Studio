@@ -10,6 +10,7 @@ import Downloads from "@/pages/Downloads/Downloads";
 import Settings from "@/pages/Settings/Settings";
 import Generate from "@/pages/Generate/Generate";
 import Billing from "@/pages/Billing/Billing";
+import AdminDashboard from "@/pages/Admin/AdminDashboard";
 
 // Workspace
 import ProjectWorkspace from "@/pages/ProjectWorkspace";
@@ -18,6 +19,8 @@ import ProjectWorkspace from "@/pages/ProjectWorkspace";
 import Login from "@/pages/Login/Login";
 import Register from "@/pages/Register/Register";
 import ForgotPassword from "@/pages/ForgotPassword/ForgotPassword";
+import ResetPassword from "@/pages/ResetPassword/ResetPassword";
+import VerifyEmail from "@/pages/VerifyEmail/VerifyEmail";
 
 // Temporary section pages
 import Images from "@/pages/Images/Images";
@@ -28,6 +31,8 @@ import Storyboard from "@/pages/Storyboard/Storyboard";
 // Fallback
 import NotFound from "@/pages/NotFound/NotFound";
 import ProtectedRoute from "@/router/ProtectedRoute";
+import AdminRoute from "@/router/AdminRoute";
+import { ADMIN_DASHBOARD_PATH } from "@/router/authRouting";
 import GuestRoute from "@/router/GuestRoute";
 import Landing from "@/pages/Landing/Landing";
 
@@ -103,6 +108,9 @@ export default function AppRouter() {
           element={<Settings />}
         />
         <Route path="/billing" element={<Billing />} />
+        <Route element={<AdminRoute />}>
+          <Route path={ADMIN_DASHBOARD_PATH} element={<AdminDashboard />} />
+        </Route>
       </Route>
       </Route>
 
@@ -113,6 +121,8 @@ export default function AppRouter() {
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/verify-email" element={<VerifyEmail />} />
       </Route>
 
       {/* ========================================

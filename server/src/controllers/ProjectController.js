@@ -19,12 +19,13 @@ class ProjectController {
         });
       }
 
-      const { name, description, status } = req.body;
+      const { name, description, status, script } = req.body;
 
       const project = await projectService.createProject({
         name,
         description,
         status,
+        script,
         ownerId: req.user.userId,
       });
 

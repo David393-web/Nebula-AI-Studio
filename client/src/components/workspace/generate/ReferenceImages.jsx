@@ -1,13 +1,13 @@
-import { useRef, useState } from "react";
-import { ImagePlus, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { X } from "lucide-react";
+import FileDropzone from "@/components/media/FileDropzone";
 
-export default function ReferenceImages({ onImagesChange }) {
-  const inputRef = useRef(null);
-  const [images, setImages] = useState([]);
+export default function ReferenceImages({ onImagesChange, value }) {
+  const [localImages, setLocalImages] = useState([]);
+  const images = value ?? localImages;
+  useEffect(() => { if (value) setLocalImages(value); }, [value]);
 
-  const handleFiles = (event) => {
-    const files = Array.from(event.target.files || []);
-
+  const handleFiles = (files) => {
     const newImages = files
       .filter((file) => file.type.startsWith("image/"))
       .map((file) => ({
@@ -17,17 +17,16 @@ export default function ReferenceImages({ onImagesChange }) {
       }));
 
     const next = [...images, ...newImages];
-    setImages(next);
+    setLocalImages(next);
     onImagesChange?.(next);
 
-    event.target.value = "";
   };
 
   const removeImage = (id) => {
     const image = images.find((item) => item.id === id);
     if (image) URL.revokeObjectURL(image.preview);
     const next = images.filter((item) => item.id !== id);
-    setImages(next);
+    setLocalImages(next);
     onImagesChange?.(next);
   };
 
@@ -66,27 +65,8 @@ export default function ReferenceImages({ onImagesChange }) {
           </div>
         ))}
 
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          className="flex flex-col items-center justify-center gap-2 transition border border-dashed rounded-xl aspect-square border-zinc-700 bg-zinc-950 text-zinc-500 hover:text-white hover:border-purple-500"
-        >
-          <ImagePlus size={22} />
-
-          <span className="text-xs">
-            Add image
-          </span>
-        </button>
+        <FileDropzone onFiles={handleFiles} label="Add reference images" description="Drop multiple reference images" className="col-span-3 sm:col-span-4" />
       </div>
-
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/*"
-        multiple
-        onChange={handleFiles}
-        className="hidden"
-      />
     </div>
   );
 }

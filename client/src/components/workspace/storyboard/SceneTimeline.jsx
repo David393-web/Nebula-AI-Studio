@@ -5,6 +5,9 @@ import {
   Sparkles,
   Image as ImageIcon,
   Video,
+  Copy,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react";
 
 export default function SceneTimeline({
@@ -13,7 +16,13 @@ export default function SceneTimeline({
   onSelect,
   onAdd,
   onGenerate,
+  onReorder,
+  onDuplicate,
 }) {
+  const handleDragStart = (event, scene) => {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("application/x-nebula-scene", scene.id);
+  };
   const validScenes = scenes.filter(
     (scene) => scene?.id,
   );
@@ -85,6 +94,10 @@ export default function SceneTimeline({
                 return (
                   <div
                     key={scene.id}
+                    draggable
+                    onDragStart={(event) => handleDragStart(event, scene)}
+                    onDragOver={(event) => { if (event.dataTransfer.types.includes("application/x-nebula-scene")) { event.preventDefault(); event.dataTransfer.dropEffect = "move"; } }}
+                    onDrop={(event) => { const draggedId = event.dataTransfer.getData("application/x-nebula-scene"); if (draggedId) { event.preventDefault(); onReorder?.(draggedId, scene.id); } }}
                     className={`flex items-center gap-3 p-3 transition border rounded-xl ${
                       selected
                         ? "border-purple-500/50 bg-purple-500/10"
@@ -93,7 +106,7 @@ export default function SceneTimeline({
                   >
                     {/* Sequence Indicator */}
                     <div
-                      className="flex-shrink-0 text-zinc-700"
+                      className="flex-shrink-0 cursor-grab text-zinc-700 active:cursor-grabbing"
                       aria-hidden="true"
                     >
                       <GripVertical size={17} />
@@ -175,6 +188,11 @@ export default function SceneTimeline({
                         Generate
                       </button>
                     )}
+                    <div className="flex shrink-0 items-center gap-1">
+                      {index > 0 && <button type="button" onClick={() => onReorder?.(scene.id, validScenes[index - 1].id)} className="rounded-md p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-white" aria-label={`Move ${scene.title || `scene ${index + 1}`} up`}><ChevronUp size={15}/></button>}
+                      {index < validScenes.length - 1 && <button type="button" onClick={() => onReorder?.(scene.id, validScenes[index + 1].id)} className="rounded-md p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-white" aria-label={`Move ${scene.title || `scene ${index + 1}`} down`}><ChevronDown size={15}/></button>}
+                      {onDuplicate && <button type="button" onClick={() => onDuplicate(scene)} className="rounded-md p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-white" aria-label={`Duplicate ${scene.title || "scene"}`}><Copy size={14}/></button>}
+                    </div>
                   </div>
                 );
               },

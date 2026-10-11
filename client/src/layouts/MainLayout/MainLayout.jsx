@@ -13,13 +13,13 @@ export default function MainLayout() {
         <Sidebar />
 
         {/* Main Application */}
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
 
           {/* Navbar */}
           <Navbar />
 
           {/* Page Content */}
-          <main className="min-w-0 flex-1 overflow-y-auto pb-24 md:pb-0">
+          <main className="min-h-0 min-w-0 flex-1 overflow-y-auto pb-24 md:pb-0">
             <div className="mx-auto w-full max-w-[1700px] px-4 py-6 sm:px-6 md:py-7 lg:px-8">
               <Outlet />
             </div>

@@ -1,8 +1,12 @@
 import { Sparkles } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 
 import GeneratePanel from "@/components/workspace/generate/GeneratePanel";
 
 export default function Generate() {
+  const [searchParams] = useSearchParams();
+  const initialPrompt = searchParams.get("prompt") || "";
+  const initialType = searchParams.get("type") === "video" ? "video" : "image";
   return (
     <div className="min-h-full text-white bg-zinc-950">
       <div className="mb-8">
@@ -21,7 +25,7 @@ export default function Generate() {
         </p>
       </div>
 
-      <GeneratePanel />
+      <GeneratePanel key={`${initialType}:${initialPrompt}`} initialPrompt={initialPrompt} initialType={initialType} />
     </div>
   );
 }

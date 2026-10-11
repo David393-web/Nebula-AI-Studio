@@ -9,7 +9,10 @@ const IMAGE_OPERATION_COSTS = Object.freeze({
 function creditCost(kind, duration = 0) {
   if (Object.hasOwn(IMAGE_OPERATION_COSTS, kind)) return IMAGE_OPERATION_COSTS[kind];
   if (kind === "image") return Math.max(1, Number(process.env.IMAGE_GENERATION_CREDITS) || 5);
-  const perThirty = Math.max(1, Number(process.env.VIDEO_30S_CREDITS) || 40);
+  const audio = kind === "videoAudio";
+  const silentDefault = Math.max(1, Number(process.env.VIDEO_30S_CREDITS) || 40);
+  const configured = Number(audio ? process.env.VIDEO_AUDIO_COST : kind === "videoSilent" ? process.env.VIDEO_SILENT_COST : process.env.VIDEO_30S_CREDITS);
+  const perThirty = Math.max(1, Number.isFinite(configured) && configured > 0 ? configured : audio ? silentDefault * 2 : silentDefault);
   return Math.max(1, Math.ceil(Math.max(2, duration) * perThirty / 30));
 }
 
@@ -30,6 +33,18 @@ async function charge(userId, credits, idempotencyKey, reason, generationId = nu
   });
 }
 
+async function preflight(userId, credits, idempotencyKey) {
+  if (!idempotencyKey || idempotencyKey.length > 120) {
+    const error = new Error("A valid Idempotency-Key header is required."); error.status = 400; throw error;
+  }
+  const [existing, account] = await Promise.all([
+    prisma.creditTransaction.findUnique({ where: { idempotencyKey } }),
+    prisma.creditAccount.findUnique({ where: { userId } }),
+  ]);
+  if (existing) { const error = new Error("This generation request has already been processed."); error.status = 409; throw error; }
+  if ((account?.balance || 0) < credits) { const error = new Error("Insufficient credits."); error.status = 402; throw error; }
+}
+
 async function refund(userId, credits, idempotencyKey, reason) {
   return prisma.$transaction(async (tx) => {
     const refundKey = `refund:${idempotencyKey}`;
@@ -47,4 +62,4 @@ async function summary(userId) {
   return { balance: account?.balance ?? 0, transactions };
 }
 
-module.exports = { IMAGE_OPERATION_COSTS, creditCost, charge, refund, summary, newIdempotencyKey: () => crypto.randomUUID() };
+module.exports = { IMAGE_OPERATION_COSTS, creditCost, charge, preflight, refund, summary, newIdempotencyKey: () => crypto.randomUUID() };

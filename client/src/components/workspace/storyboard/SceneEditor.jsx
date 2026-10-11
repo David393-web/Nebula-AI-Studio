@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react";
 import {
   X,
-  Image as ImageIcon,
-  Video,
   Save,
   User,
 } from "lucide-react";
 
 import CharacterSelector from "../characters/CharacterSelector";
 import useCharacterStore from "@/stores/characters/characterStore";
+import api from "@/services/api";
+import { getImages } from "@/services/media";
+import FileDropzone from "@/components/media/FileDropzone";
 
 export default function SceneEditor({
   scene,
@@ -33,10 +34,6 @@ export default function SceneEditor({
       "",
   );
 
-  const [type, setType] = useState(
-    scene?.type || "image",
-  );
-
   const [prompt, setPrompt] = useState(
     scene?.prompt ||
       scene?.description ||
@@ -46,11 +43,40 @@ export default function SceneEditor({
   const [notes, setNotes] = useState(
     scene?.notes || "",
   );
+  const [durationSeconds, setDurationSeconds] = useState(Number(scene?.durationSeconds || scene?.metadata?.durationSeconds || 5));
+  const [audioMode, setAudioMode] = useState(scene?.audioMode || scene?.metadata?.audioMode || "inherit");
+  const [audioPrompt, setAudioPrompt] = useState(scene?.audioPrompt || scene?.metadata?.audioPrompt || "");
+  const [images, setImages] = useState([]);
+  const [uploadProgress, setUploadProgress] = useState("");
+  const [imageId, setImageId] = useState(scene?.imageId || scene?.metadata?.imageId || "");
 
   const [isSaving, setIsSaving] = useState(false);
 
   const [formError, setFormError] =
     useState("");
+
+  useEffect(() => { getImages().then((rows) => {
+    setImages(rows);
+    setImageId((current) => current || rows.find((row) => row.url === scene?.imageUrl)?.id || "");
+  }).catch(() => {}); }, [scene?.id, scene?.imageUrl]);
+
+  const handleImageUpload = async (files, rejected = []) => {
+    setFormError(rejected.join(" · ")); if (!files.length) return;
+    setIsSaving(true); const imported = []; const failures = [];
+    for (const [index, file] of files.entries()) {
+      setUploadProgress(`Uploading ${index + 1} of ${files.length}: ${file.name}`);
+      try {
+        const form = new FormData(); form.append("file", file);
+        const { data } = await api.post("/storage/upload", form, { headers: { "Content-Type": "multipart/form-data" } });
+        const image = data?.data?.image;
+        if (!image?.id) throw new Error("The image was uploaded but could not be added to the library.");
+        imported.push(image);
+      } catch (error) { failures.push(`${file.name}: ${error.response?.data?.message || error.message || "Upload failed"}`); }
+    }
+    if (imported.length) { setImages((current) => [...imported, ...current]); setImageId(imported[0].id); }
+    setFormError([rejected.join(" · "), failures.join(" · ")].filter(Boolean).join(" · "));
+    setUploadProgress(""); setIsSaving(false);
+  };
 
   /*
    * When editing an existing scene,
@@ -100,11 +126,19 @@ export default function SceneEditor({
       title:
         trimmedTitle || "Untitled Scene",
 
-      type,
+      type: "image",
 
       prompt: trimmedPrompt,
 
       notes: trimmedNotes,
+
+      durationSeconds: Math.min(15, Math.max(2, Number(durationSeconds) || 5)),
+      audioMode,
+      audioPrompt: audioPrompt.trim(),
+
+      imageId: imageId || null,
+
+      imageUrl: images.find((image) => image.id === imageId)?.url || (imageId ? null : scene?.imageUrl || null),
 
       character:
         selectedCharacter || null,
@@ -179,6 +213,18 @@ export default function SceneEditor({
         )}
 
         {/* Scene Title */}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="block text-sm font-medium text-zinc-300">Scene audio
+            <select value={audioMode} onChange={(event) => setAudioMode(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-zinc-800 bg-zinc-950 px-3 text-sm text-white">
+              <option value="inherit">Use Video Studio setting</option><option value="audio">AI Audio</option><option value="silent">No Audio</option>
+            </select>
+          </label>
+          <label className="block text-sm font-medium text-zinc-300">Voice &amp; Audio Instructions
+            <textarea value={audioPrompt} onChange={(event) => setAudioPrompt(event.target.value)} maxLength={3000} rows={2} placeholder="Dialogue, narration, voice, music, or ambience…" className="mt-2 w-full resize-y rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-xs text-white outline-none focus:border-violet-500" />
+          </label>
+        </div>
+
+        {/* Scene Title */}
         <div>
           <label
             htmlFor="scene-title"
@@ -200,41 +246,12 @@ export default function SceneEditor({
           />
         </div>
 
-        {/* Generation Type */}
         <div>
-          <label className="block mb-2 text-sm font-medium text-zinc-300">
-            Generation Type
-          </label>
-
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={() => setType("image")}
-              disabled={isSaving}
-              className={`flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium transition border rounded-xl ${
-                type === "image"
-                  ? "border-purple-500 bg-purple-500/10 text-purple-400"
-                  : "border-zinc-800 bg-zinc-950 text-zinc-500 hover:text-white hover:border-zinc-700"
-              } disabled:opacity-60`}
-            >
-              <ImageIcon size={17} />
-              Image
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setType("video")}
-              disabled={isSaving}
-              className={`flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium transition border rounded-xl ${
-                type === "video"
-                  ? "border-purple-500 bg-purple-500/10 text-purple-400"
-                  : "border-zinc-800 bg-zinc-950 text-zinc-500 hover:text-white hover:border-zinc-700"
-              } disabled:opacity-60`}
-            >
-              <Video size={17} />
-              Video
-            </button>
-          </div>
+          <label htmlFor="scene-duration" className="mb-2 block text-sm font-medium text-zinc-300">Scene video length</label>
+          <select id="scene-duration" value={durationSeconds} onChange={(event) => setDurationSeconds(Number(event.target.value))} disabled={isSaving} className="h-11 w-full rounded-xl border border-zinc-800 bg-zinc-950 px-3 text-sm text-white">
+            {Array.from({ length: 14 }, (_, index) => index + 2).map((seconds) => <option key={seconds} value={seconds}>{seconds} seconds</option>)}
+          </select>
+          <p className="mt-1 text-xs text-zinc-600">Video clips support 2–15 seconds per scene.</p>
         </div>
 
         {/* Character */}
@@ -251,6 +268,19 @@ export default function SceneEditor({
           </div>
 
           <CharacterSelector />
+        </div>
+
+        <div>
+          <label htmlFor="scene-source-image" className="mb-2 block text-sm font-medium text-zinc-300">Scene image <span className="font-normal text-zinc-600">Optional</span></label>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <select id="scene-source-image" value={imageId} onChange={(event) => setImageId(event.target.value)} disabled={isSaving} className="h-11 min-w-0 flex-1 rounded-xl border border-zinc-800 bg-zinc-950 px-3 text-sm text-white">
+              <option value="">No image selected</option>
+              {images.map((image) => <option key={image.id} value={image.id}>{image.name || "Untitled image"}</option>)}
+            </select>
+            <FileDropzone onFiles={handleImageUpload} label="Upload scene images" description="Drop one or more scene images" disabled={isSaving} />
+            {uploadProgress && <p role="status" className="mt-1 text-[10px] text-violet-300">{uploadProgress}</p>}
+          </div>
+          {imageId && images.find((image) => image.id === imageId)?.url && <img src={images.find((image) => image.id === imageId)?.thumbnailUrl || images.find((image) => image.id === imageId)?.url} alt="Selected scene reference" className="mt-3 max-h-48 rounded-lg border border-zinc-800 object-contain"/>}
         </div>
 
         {/* Generation Prompt */}

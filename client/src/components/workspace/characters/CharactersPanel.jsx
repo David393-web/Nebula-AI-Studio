@@ -10,6 +10,7 @@ import useAssetStore from "@/stores/assets/assetStore";
 export default function CharactersPanel() {
   const [isModalOpen, setIsModalOpen] =
     useState(false);
+  const [editingCharacter, setEditingCharacter] = useState(null);
 
   const {
     characters,
@@ -18,6 +19,7 @@ export default function CharactersPanel() {
     error,
     fetchCharacters,
     addCharacter,
+    updateCharacter,
     deleteCharacter,
     selectCharacter,
     clearCharacter,
@@ -80,6 +82,14 @@ export default function CharactersPanel() {
     }
   };
 
+  const handleUpdateCharacter = async (changes) => {
+    if (!editingCharacter?.id) return;
+    clearError();
+    await updateCharacter(editingCharacter.id, changes);
+    setEditingCharacter(null);
+    setIsModalOpen(false);
+  };
+
   const handleSelectCharacter = (character) => {
     selectCharacter(character);
   };
@@ -108,9 +118,7 @@ export default function CharactersPanel() {
 
         <button
           type="button"
-          onClick={() =>
-            setIsModalOpen(true)
-          }
+          onClick={() => { setEditingCharacter(null); setIsModalOpen(true); }}
           className="flex items-center justify-center gap-2 px-5 py-3 text-sm font-medium text-white transition bg-purple-600 rounded-xl hover:bg-purple-700"
         >
           <Plus size={18} />
@@ -214,16 +222,20 @@ export default function CharactersPanel() {
           characters={characters}
           onSelect={handleSelectCharacter}
           onDelete={handleDeleteCharacter}
+          onEdit={(character) => { setEditingCharacter(character); setIsModalOpen(true); }}
         />
       )}
 
       {/* Create Modal */}
       <CreateCharacterModal
+        key={`${isModalOpen ? "open" : "closed"}-${editingCharacter?.id || "new"}`}
         isOpen={isModalOpen}
         onClose={() =>
           setIsModalOpen(false)
         }
         onCreate={handleCreateCharacter}
+        onUpdate={handleUpdateCharacter}
+        character={editingCharacter}
       />
     </div>
   );
