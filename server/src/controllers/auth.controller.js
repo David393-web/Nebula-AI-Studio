@@ -1,18 +1,12 @@
 const authService = require("../services/Auth/auth.service");
 const passwordResetService = require("../services/Auth/passwordReset.service");
+const { getAuthCookieOptions, getAuthCookieClearOptions } = require("./authCookie");
 const { randomUUID } = require("node:crypto");
 
 const {
   validateRegister,
   validateLogin,
 } = require("../validators/auth.validator");
-
-const cookieOptions = {
-  httpOnly: true,
-  secure: process.env.NODE_ENV === "production",
-  sameSite: "lax",
-  maxAge: 7 * 24 * 60 * 60 * 1000,
-};
 
 class AuthController {
   async requestPasswordReset(req, res, next) {
@@ -142,7 +136,7 @@ class AuthController {
         password,
       });
 
-      res.cookie("nebula_token", result.token, cookieOptions);
+      res.cookie("nebula_token", result.token, getAuthCookieOptions());
 
       return res.status(200).json({
         success: true,
@@ -158,11 +152,7 @@ class AuthController {
 
   async logout(req, res, next) {
     try {
-      res.clearCookie("nebula_token", {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-      });
+      res.clearCookie("nebula_token", getAuthCookieClearOptions());
 
       return res.status(200).json({
         success: true,

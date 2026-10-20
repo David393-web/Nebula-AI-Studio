@@ -1,15 +1,14 @@
-import axios from "axios";
+import { resolveApiBaseUrl } from "@/config/apiBaseUrl";
+import { createApiClient } from "@/config/createApiClient";
 
-const api = axios.create({
-  baseURL:
-    import.meta.env.VITE_API_URL ||
-    "http://localhost:5000/api",
-  timeout: 30000,
-  withCredentials: true,
-  headers: {
-    "Content-Type": "application/json",
-  },
-});
+const api = createApiClient(
+  import.meta.env.DEV && !import.meta.env.VITE_API_URL
+    ? "http://localhost:5000/api"
+    : resolveApiBaseUrl({
+        mode: import.meta.env.MODE,
+        apiUrl: import.meta.env.VITE_API_URL,
+      }),
+);
 
 // Authentication uses the HttpOnly nebula_token cookie set by the API.
 // Remove tokens left by older client versions: a stale Bearer header takes
