@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { getCurrentUser, login as loginRequest, logout as logoutRequest, register as registerRequest } from "@/services/auth";
+import { resolveHydrationFailure } from "./authHydration.js";
 
 let hydrationPromise = null;
 
@@ -15,8 +16,9 @@ export const useAuthStore = create((set) => ({
         const user = await getCurrentUser();
         set({ user, status: user ? "authenticated" : "anonymous" });
         return user;
-      } catch {
-        set({ user: null, status: "anonymous" });
+      } catch (error) {
+        const result = resolveHydrationFailure(error);
+        set(result);
         return null;
       } finally { hydrationPromise = null; }
     })();
