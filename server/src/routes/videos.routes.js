@@ -20,6 +20,7 @@ router.get(
   videoController.getByProject
 );
 
+router.get("/:id/media", videoController.media);
 router.get("/:id/download", videoController.download);
 
 // Get single video

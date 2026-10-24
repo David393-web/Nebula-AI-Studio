@@ -4,6 +4,9 @@ const imageService = require("../services/Image/image.service");
 const imageGenerationService = require("../services/Generation/imageGeneration.service");
 const storageService = require("../services/Storage/storage.service");
 const creditsService = require("../services/Credits/credits.service");
+const getMediaStorageRoot = require("../utils/mediaStorageRoot");
+const { randomUUID } = require("crypto");
+const providerImageInput = require("../utils/providerImageInput");
 
 const OPERATIONS = new Set(["edit"]);
 
@@ -25,13 +28,13 @@ class ImageOperationController {
       const apiOrigin = new URL(process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get("host")}`).origin;
       let providerImage;
       if (sourceUrl.origin === apiOrigin && sourceUrl.pathname.startsWith("/uploads/")) {
-        const uploadRoot = path.resolve(process.cwd(), "uploads");
+        const uploadRoot = getMediaStorageRoot();
         const relativePath = decodeURIComponent(sourceUrl.pathname.slice("/uploads/".length));
         const filePath = path.resolve(uploadRoot, relativePath);
         if (!filePath.startsWith(uploadRoot + path.sep)) return res.status(400).json({ success: false, message: "Invalid source image path." });
         providerImage = await fs.readFile(filePath);
       } else if (["https:", "http:"].includes(sourceUrl.protocol)) {
-        providerImage = sourceUrl.toString();
+        providerImage = await providerImageInput(sourceUrl.toString(), userId, apiOrigin);
       } else {
         return res.status(400).json({ success: false, message: "This image format or storage location cannot be sent to the image provider." });
       }
@@ -46,11 +49,13 @@ class ImageOperationController {
       const images = [];
       for (const result of results) {
         const saved = await storageService.saveRemoteImage(result.url);
+        const imageIdForMedia = randomUUID();
         images.push(await imageService.createImage({
+          id: imageIdForMedia,
           name: `${source.name || "Image"} · edited`,
           prompt: instruction,
-          url: `${publicBaseUrl}${saved.path}`,
-          metadata: { provider: result.provider, model: result.model, operation, sourceImageId: source.id },
+          url: `${publicBaseUrl}/api/images/${imageIdForMedia}/media`,
+          metadata: { provider: result.provider, model: result.model, providerUrl: result.url, storageKey: saved.storageKey, storageSize: saved.size, generationId: key || null, mediaType: "image", operation, sourceImageId: source.id },
           userId, projectId: source.projectId || null,
         }));
       }

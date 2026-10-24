@@ -7,6 +7,8 @@ const creditsService = require("../services/Credits/credits.service");
 const characterService = require("../services/Character/character.service");
 const storyboardService = require("../services/Storyboard/storyboard.service");
 const projectService = require("../services/Project/project.service");
+const { randomUUID } = require("crypto");
+const providerImageInput = require("../utils/providerImageInput");
 
 function getSavedSceneCharacterIds(scene) {
   const metadata = scene?.metadata || {};
@@ -114,6 +116,7 @@ class ImageGenerationController {
         for (const id of characterIds) {
           const character = await characterService.getCharacter(id, userId);
           if (character.projectId && character.projectId !== projectId) return res.status(400).json({ success: false, message: "A selected character is not available to this project." });
+          if (!character.imageUrl) return res.status(422).json({ success: false, message: `The selected character “${character.name}” has no saved reference image. Add a reference image to the character before generating.` });
           selectedCharacters.push(character);
         }
         const savedBlocks = savedScene.metadata?.sceneScript?.blocks || [];
@@ -128,11 +131,6 @@ class ImageGenerationController {
         await projectService.getProject(projectId, userId);
       }
 
-      phase = "credit_charge";
-      chargedCredits = creditsService.creditCost("image");
-      await creditsService.charge(userId, chargedCredits, idempotencyKey, "FLUX.2 Pro image generation", idempotencyKey);
-      chargeCompleted = true;
-
       phase = "reference_collection";
       const mediaBaseUrl = (process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get("host")}`).replace(/\/$/, "");
       const toAbsoluteUrl = (url) => url?.startsWith("/") ? `${mediaBaseUrl}${url}` : url;
@@ -141,7 +139,7 @@ class ImageGenerationController {
         if (referenceImageIds.length > 8 || referenceImageIds.some((id) => typeof id !== "string")) return res.status(400).json({ success: false, message: "Choose up to 8 valid reference images." });
         for (const id of [...new Set(referenceImageIds)]) {
           const reference = await imageService.getImage(id, userId);
-          referenceImageUrls.push(toAbsoluteUrl(reference.url));
+          referenceImageUrls.push(await providerImageInput(reference.url, userId, mediaBaseUrl));
         }
       } else if (referenceImageIds != null && !Array.isArray(referenceImageIds)) {
         return res.status(400).json({ success: false, message: "Reference images must be a list of saved image IDs." });
@@ -149,10 +147,10 @@ class ImageGenerationController {
       if (savedScene) {
         const metadata = savedScene.metadata || {};
         const sceneSource = savedScene.imageUrl || metadata.imageUrl || (metadata.generatedType === "image" ? metadata.generatedUrl || metadata.generatedImageUrl : null);
-        if (sceneSource) referenceImageUrls.push(toAbsoluteUrl(sceneSource));
+        if (sceneSource) referenceImageUrls.push(await providerImageInput(toAbsoluteUrl(sceneSource), userId, mediaBaseUrl));
         for (const id of characterIds) {
           const character = await characterService.getCharacter(id, userId);
-          if (character.imageUrl) referenceImageUrls.push(toAbsoluteUrl(character.imageUrl));
+          if (character.imageUrl) referenceImageUrls.push(await providerImageInput(toAbsoluteUrl(character.imageUrl), userId, mediaBaseUrl));
         }
         if (sceneSource && characterIds.length) {
           finalPrompt += "\n\nREFERENCE USE: The first reference is the storyboard scene image and defines scene composition and environment. Additional character images are visual identity references only (face, appearance, clothing, hair, colors, accessories and body design). Do not recreate a character card, sheet, poster, layout, labels or its background.";
@@ -163,14 +161,22 @@ class ImageGenerationController {
         const referenceCharacterId = characterIds[0] || characterId;
         if (referenceCharacterId) {
           const character = await characterService.getCharacter(referenceCharacterId, userId);
+          if (!character.imageUrl) return res.status(422).json({ success: false, message: `The selected character “${character.name}” has no saved reference image. Add a reference image to the character before generating.` });
           selectedCharacters.push(character);
-          if (character.imageUrl) referenceImageUrls.push(toAbsoluteUrl(character.imageUrl));
+          if (character.imageUrl) referenceImageUrls.push(await providerImageInput(toAbsoluteUrl(character.imageUrl), userId, mediaBaseUrl));
           finalPrompt = sanitizeVisualText(finalPrompt, [character.name]);
           finalPrompt += "\n\nREFERENCE USE: The attached character image is a visual identity reference only (face, appearance, clothing, hair, colors, accessories and body design). Do not recreate a character card, sheet, poster, layout, labels or its background.";
         }
       }
 
       finalPrompt += "\n\nNo visible text, captions, subtitles, character labels, dialogue text, typography, UI, logos or written words in the generated scene. Character names are metadata only and must never appear in the image.";
+      const uniqueReferenceImageUrls = [...new Set(referenceImageUrls)];
+      if (uniqueReferenceImageUrls.length > 8) return res.status(400).json({ success: false, message: "Choose up to eight reference images, including character images." });
+
+      phase = "credit_charge";
+      chargedCredits = creditsService.creditCost("image");
+      await creditsService.charge(userId, chargedCredits, idempotencyKey, "FLUX.2 Pro image generation", idempotencyKey);
+      chargeCompleted = true;
 
       phase = "provider_generation";
       if (process.env.NODE_ENV !== "production") {
@@ -186,7 +192,7 @@ class ImageGenerationController {
           characterCount: selectedCharacters.length,
           characterNames: selectedCharacters.map((character) => character.name),
           hasReferenceImages: referenceImageUrls.length > 0,
-          referenceImageCount: referenceImageUrls.length,
+          referenceImageCount: uniqueReferenceImageUrls.length,
           aspectRatio: ratio || "1:1",
           quality: quality || "standard",
           sceneId: sceneId || null,
@@ -198,7 +204,7 @@ class ImageGenerationController {
         model,
         ratio,
         quality,
-        referenceImageUrls,
+        referenceImageUrls: uniqueReferenceImageUrls,
       });
 
       phase = "image_download";
@@ -206,11 +212,13 @@ class ImageGenerationController {
       const publicBaseUrl = (
         process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get("host")}`
       ).replace(/\/$/, "");
+      const imageId = randomUUID();
       const image = await imageService.createImage({
+        id: imageId,
         name: finalPrompt.slice(0, 80) || "Generated image",
         prompt: finalPrompt,
-        url: `${publicBaseUrl}${storedImage.path}`,
-        metadata: { provider: result.provider, model: result.model, ratio, quality, characterIds, sceneId: sceneId || null, generationSource: generationSource || (sceneId ? "storyboard" : "independent"), sceneScript: savedScene?.metadata?.sceneScript || null },
+        url: `${publicBaseUrl}/api/images/${imageId}/media`,
+        metadata: { provider: result.provider, model: result.model, providerUrl: result.url, storageKey: storedImage.storageKey, storageSize: storedImage.size, generationId: idempotencyKey || null, mediaType: "image", ratio, quality, characterIds, sceneId: sceneId || null, generationSource: generationSource || (sceneId ? "storyboard" : "independent"), sceneScript: savedScene?.metadata?.sceneScript || null },
         userId,
         projectId: projectId || null,
       });

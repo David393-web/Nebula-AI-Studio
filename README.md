@@ -110,6 +110,24 @@ VITE_IMAGE_API_URL="your_ai_api_endpoint"
 VITE_IMAGE_API_KEY="your_ai_api_key"
 ```
 
+For a Vercel production deployment, set `VITE_API_URL` in the Vercel project
+settings to the deployed Express API base URL, including `/api`, for example
+`https://<your-api-host>/api`. The value must be an HTTPS URL; localhost is
+rejected by production builds. Vite embeds `VITE_*` values at build time, so
+set the value for Production (and Preview if needed) and redeploy the frontend.
+Do not use a Vercel frontend URL or a guessed API host for this value.
+
+The Express API must be deployed separately as a Node.js service. Configure its
+start command as `npm start` from `server/` (or the deployment's equivalent
+root-directory configuration), expose the platform-provided `PORT`, and set
+production environment values including `NODE_ENV=production`, `DATABASE_URL`,
+`DIRECT_URL`, `JWT_SECRET`, `CLIENT_URL` (the exact frontend origin, without a
+path; comma-separated origins are accepted), and `APP_URL` (the frontend origin
+used in password-reset links). Configure the existing email/provider and
+generation secrets only as required by those features. Production auth cookies
+are Secure and SameSite=None so credentialed requests can work across sites;
+the API's CORS allowlist must include the frontend origin.
+
 ## Usage
 
 Run the server application:

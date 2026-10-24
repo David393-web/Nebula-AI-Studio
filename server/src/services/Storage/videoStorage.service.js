@@ -3,17 +3,20 @@ const path = require("path");
 const { randomUUID } = require("crypto");
 const { Readable, Transform } = require("stream");
 const { pipeline } = require("stream/promises");
+const getMediaStorageRoot = require("../../utils/mediaStorageRoot");
+const retryTransient = require("../../utils/retryTransient");
 
 const MAX_VIDEO_BYTES = 500 * 1024 * 1024;
 
 class VideoStorageService {
   async saveFromUrl(videoUrl) {
-    const response = await fetch(videoUrl);
+    return retryTransient(async () => {
+    const response = await fetch(videoUrl, { signal: AbortSignal.timeout(120000) });
 
     if (!response.ok || !response.body) {
-      throw new Error(
-        `Generated video could not be downloaded. HTTP ${response.status}.`,
-      );
+      const error = new Error(`Generated video could not be downloaded. HTTP ${response.status}.`);
+      error.status = response.status;
+      throw error;
     }
 
     const contentType = response.headers.get("content-type") || "";
@@ -28,7 +31,7 @@ class VideoStorageService {
       throw new Error("Generated video exceeds the 500 MB storage limit.");
     }
 
-    const directory = path.join(process.cwd(), "uploads", "videos");
+    const directory = path.join(getMediaStorageRoot(), "private", "videos");
     const fileName = `${randomUUID()}.mp4`;
     const filePath = path.join(directory, fileName);
     let bytesWritten = 0;
@@ -60,9 +63,11 @@ class VideoStorageService {
     }
 
     return {
-      path: `/uploads/videos/${fileName}`,
+      path: null,
       size: bytesWritten,
+      storageKey: `private/videos/${fileName}`,
     };
+    }, { delayMs: 500 });
   }
 }
 

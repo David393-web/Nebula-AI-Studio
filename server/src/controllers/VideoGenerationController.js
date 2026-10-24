@@ -8,6 +8,8 @@ const storyboardService = require("../services/Storyboard/storyboard.service");
 const characterService = require("../services/Character/character.service");
 const videoGenerationStatusService = require("../services/Generation/videoGenerationStatus.service");
 const { getModelRegistry } = require("../services/Generation/modelRegistry");
+const { randomUUID } = require("crypto");
+const providerImageInput = require("../utils/providerImageInput");
 
 const NO_VISIBLE_TEXT_INSTRUCTION = "No visible text, captions, subtitles, character labels, dialogue text, typography, UI, logos or written words in the generated scene. Character names are metadata only and must never appear in the video.";
 
@@ -50,7 +52,7 @@ class VideoGenerationController {
         });
       }
 
-      const { imageUrl, imageId, prompt, duration, quality, sceneId, projectId, audio, audioPrompt, sceneScript, characterIds: requestedCharacterIds, generationSource, modelId } =
+      const { imageUrl, imageId, prompt, duration, quality, sceneId, projectId, audio, audioPrompt, sceneScript, characterIds: requestedCharacterIds, referenceImageIds = [], generationSource, modelId, frameMode = "reference" } =
         req.body;
 
       if (!imageUrl && !imageId) {
@@ -66,6 +68,7 @@ class VideoGenerationController {
           message: "Video prompt is required.",
         });
       }
+      if (!["reference", "first_frame"].includes(frameMode)) return res.status(400).json({ success: false, message: "Choose reference guidance or an explicit first frame." });
 
       if (typeof prompt !== "string" || prompt.length > 15000) {
         return res.status(400).json({ success: false, message: "Video direction is too long." });
@@ -82,6 +85,12 @@ class VideoGenerationController {
         if (withAudio && !selected.audio) return res.status(400).json({ success: false, message: "The selected video model does not support generated audio." });
       }
       let providerPrompt = "";
+      const referenceImageUrls = [];
+      if (!Array.isArray(referenceImageIds) || referenceImageIds.length > 5 || referenceImageIds.some((id) => typeof id !== "string")) return res.status(400).json({ success: false, message: "Choose up to five valid video reference images." });
+      for (const id of [...new Set(referenceImageIds)]) {
+        const reference = await imageService.getImage(id, userId);
+        referenceImageUrls.push(await providerImageInput(reference.url, userId, (process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get("host")}`).replace(/\/$/, "")));
+      }
 
       let verifiedImageUrl = imageUrl;
       let validatedScene = null;
@@ -111,14 +120,34 @@ class VideoGenerationController {
         for (const id of submittedCharacterIds) {
           const character = await characterService.getCharacter(id, userId);
           if (character.projectId && character.projectId !== projectId) return res.status(400).json({ success: false, message: "A selected character is not available to this project." });
+          if (!character.imageUrl) return res.status(422).json({ success: false, message: `The selected character “${character.name}” has no saved reference image. Add a reference image to the character before generating.` });
           if (character.name) visualCharacterNames.push(character.name);
+          if (character.imageUrl) referenceImageUrls.push(await providerImageInput(character.imageUrl, userId, (process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get("host")}`).replace(/\/$/, "")));
         }
+        if (frameMode === "reference" && verifiedImageUrl) referenceImageUrls.unshift(await providerImageInput(verifiedImageUrl, userId, (process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get("host")}`).replace(/\/$/, "")));
         providerPrompt = sanitizeVisualPrompt(prompt, visualCharacterNames);
         console.info("Storyboard video generation context", { projectId, sceneId, characterIds: submittedCharacterIds, scriptBlockIds: blocks.map((block) => block.id).filter(Boolean), generationSource: "storyboard" });
       } else {
+        const submittedCharacterIds = Array.isArray(requestedCharacterIds) ? [...new Set(requestedCharacterIds.filter((id) => typeof id === "string"))] : [];
+        if (submittedCharacterIds.length > 5) return res.status(400).json({ success: false, message: "Choose up to five video reference images." });
+        for (const id of submittedCharacterIds) {
+          const character = await characterService.getCharacter(id, userId);
+          if (!character.imageUrl) return res.status(422).json({ success: false, message: `The selected character “${character.name}” has no saved reference image. Add a reference image to the character before generating.` });
+          if (character.imageUrl) referenceImageUrls.push(await providerImageInput(character.imageUrl, userId, (process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get("host")}`).replace(/\/$/, "")));
+        }
+        if (frameMode === "reference" && verifiedImageUrl) referenceImageUrls.unshift(await providerImageInput(verifiedImageUrl, userId, (process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get("host")}`).replace(/\/$/, "")));
         providerPrompt = sanitizeVisualPrompt(prompt);
       }
       if (projectId && !sceneId) await projectService.getProject(projectId, userId);
+      const uniqueReferenceImageUrls = [...new Set(referenceImageUrls)];
+      if (uniqueReferenceImageUrls.length > 5) return res.status(400).json({ success: false, message: "Wan reference-to-video supports up to five reference images." });
+      if (frameMode === "reference") {
+        providerPrompt += uniqueReferenceImageUrls.length === 1
+          ? "\n\nUse the reference image as visual guidance. Preserve the subject's face, skin tone, hairstyle, clothing, body features, and other defining details while generating moving footage. The reference image is not a video frame; generate the complete scene as video."
+          : "\n\nUse Image 1, Image 2, and the remaining reference images as visual guidance in their supplied order. Preserve each subject's defining identity and generate moving footage; do not reproduce the reference images as still frames."
+      } else if (referenceImageUrls.length) {
+        providerPrompt += "\n\nStart from the explicitly selected first frame. Use the additional reference images only to preserve subject identity and visual details."
+      }
 
       const requestedDuration = Math.min(15, Math.max(2, Math.round(Number(duration) || 5)));
       chargedCredits = creditsService.creditCost(withAudio ? "videoAudio" : "videoSilent", requestedDuration);
@@ -127,7 +156,9 @@ class VideoGenerationController {
 
       const result = await videoGenerationService.generate({
         userId,
-        imageUrl: verifiedImageUrl,
+        imageUrl: await providerImageInput(verifiedImageUrl, userId, (process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get("host")}`).replace(/\/$/, "")),
+        referenceImageUrls: uniqueReferenceImageUrls,
+        frameMode,
         prompt: providerPrompt,
         duration,
         quality,
@@ -146,14 +177,21 @@ class VideoGenerationController {
       const publicBaseUrl = (
         process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get("host")}`
       ).replace(/\/$/, "");
+      const videoId = randomUUID();
       const video = await videoService.createVideo({
+        id: videoId,
         name: `AI video ${new Date().toISOString()}`,
         prompt: providerPrompt,
-        url: `${publicBaseUrl}${storedVideo.path}`,
+        url: `${publicBaseUrl}/api/videos/${videoId}/media`,
         duration: Math.round(Number(result.duration) || 0),
         metadata: {
           provider: result.provider,
           model: result.model,
+          providerUrl: result.url,
+          storageKey: storedVideo.storageKey,
+          storageSize: storedVideo.size,
+          generationId: idempotencyKey || null,
+          mediaType: "video",
           taskId: result.taskId,
           requestId: result.requestId,
           sceneId: sceneId || null,
@@ -169,6 +207,7 @@ class VideoGenerationController {
           skippedModels: result.skippedModels,
           audioPrompt: audioPrompt?.trim() || null,
           generationSource: generationSource || (sceneId ? "storyboard" : "independent"),
+          frameMode,
           characterIds: Array.isArray(requestedCharacterIds) ? requestedCharacterIds : [],
           sceneScript: validatedScene?.metadata?.sceneScript || null,
         },

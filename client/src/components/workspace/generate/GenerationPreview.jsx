@@ -2,14 +2,14 @@ import { useState } from "react";
 import MediaViewer from "@/components/media/MediaViewer";
 import { Download, Image as ImageIcon, Maximize2, Play } from "lucide-react";
 
-export default function GenerationPreview({ result = null, type = "image", loading = false, sourceLabel = "Your generated result", details = null }) {
+export default function GenerationPreview({ result = null, downloadUrl = null, type = "image", loading = false, sourceLabel = "Your generated result", details = null }) {
   const [viewerOpen, setViewerOpen] = useState(false);
   const MediaIcon = type === "video" ? Play : ImageIcon;
 
   return <section className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 md:flex md:min-h-[480px] md:flex-col">
     <header className="flex items-center justify-between gap-3 border-b border-zinc-800 px-4 py-3 sm:px-5 sm:py-4">
       <div className="flex min-w-0 items-center gap-2.5"><span className="rounded-lg bg-violet-500/10 p-2 text-violet-300"><MediaIcon size={17}/></span><div className="min-w-0"><h3 className="text-sm font-semibold text-white">Preview</h3><p className="truncate text-[10px] text-zinc-500 sm:text-xs">{sourceLabel}</p></div></div>
-      {result && <div className="flex shrink-0 items-center gap-1.5"><button type="button" onClick={() => setViewerOpen(true)} className="inline-flex h-10 items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-xs font-medium text-zinc-300 hover:text-white" title="Expand preview"><Maximize2 size={15}/><span className="hidden min-[380px]:inline">Expand</span></button><a href={result} download className="inline-flex h-10 items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-xs font-medium text-zinc-300 hover:text-white" title="Download"><Download size={15}/><span className="hidden min-[380px]:inline">Save</span></a></div>}
+      {result && <div className="flex shrink-0 items-center gap-1.5"><button type="button" onClick={() => setViewerOpen(true)} className="inline-flex h-10 items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-xs font-medium text-zinc-300 hover:text-white" title="Expand preview"><Maximize2 size={15}/><span className="hidden min-[380px]:inline">Expand</span></button><a href={downloadUrl || result} className="inline-flex h-10 items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-xs font-medium text-zinc-300 hover:text-white" title="Download"><Download size={15}/><span className="hidden min-[380px]:inline">Save</span></a></div>}
     </header>
 
     <div className="p-3 sm:p-4 md:flex md:flex-1 md:flex-col md:justify-center md:p-5">

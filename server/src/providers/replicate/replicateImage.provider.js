@@ -1,5 +1,6 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
+const getMediaStorageRoot = require("../../utils/mediaStorageRoot");
 
 const getReplicateClient = async () => {
   if (process.env.REPLICATE_IMAGE_ENABLED === "false") {
@@ -87,7 +88,7 @@ async function normalizeReferenceImage(value, index) {
 
   const isLocalHost = ["localhost", "127.0.0.1", "::1"].includes(url.hostname);
   if (url.pathname.startsWith("/uploads/")) {
-    const uploadsRoot = path.resolve(__dirname, "../../../uploads");
+    const uploadsRoot = getMediaStorageRoot();
     const relativePath = decodeURIComponent(url.pathname.slice("/uploads/".length));
     const localPath = path.resolve(uploadsRoot, relativePath);
     if (!localPath.startsWith(`${uploadsRoot}${path.sep}`)) {
@@ -181,6 +182,9 @@ async function generateImage({
   const references = Array.isArray(inputImages) ? [...new Set(inputImages)] : [];
   if (references.length > MAX_REFERENCE_IMAGES) {
     throw invalidReference(`FLUX.2 Pro accepts up to ${MAX_REFERENCE_IMAGES} reference images.`);
+  }
+  if (references.length && MODEL.split(":")[0] !== "black-forest-labs/flux-2-pro") {
+    throw invalidReference("The configured image model does not have verified image-reference support. Configure black-forest-labs/flux-2-pro or remove the reference images.");
   }
   const normalizedImages = await Promise.all(references.map(normalizeReferenceImage));
   const replicate = await getReplicateClient();

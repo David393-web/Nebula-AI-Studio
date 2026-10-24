@@ -13,6 +13,10 @@ const DEFAULT_MODEL_CHAIN = Object.freeze([
   "wan2.1-i2v-plus",
   "wan2.1-i2v-turbo",
 ]);
+const DEFAULT_REFERENCE_MODEL_CHAIN = Object.freeze([
+  "wan2.7-r2v-2026-06-12",
+  "wan2.7-r2v",
+]);
 
 // Alibaba's public API uses the wanx2.1 names for the Wan 2.1 I2V models.
 const MODEL_ALIASES = Object.freeze({
@@ -21,6 +25,8 @@ const MODEL_ALIASES = Object.freeze({
 });
 
 const MODEL_CAPABILITIES = Object.freeze({
+  "wan2.7-r2v": { protocol: "reference", promptLimit: 5000, durations: "range", minDuration: 2, maxDuration: 15, resolutions: ["720P", "1080P"], audio: "automatic" },
+  "wan2.7-r2v-2026-06-12": { protocol: "reference", promptLimit: 5000, durations: "range", minDuration: 2, maxDuration: 15, resolutions: ["720P", "1080P"], audio: "automatic" },
   "wan2.6-i2v-flash": { protocol: "legacy", promptLimit: 1500, durations: "range", minDuration: 2, maxDuration: 15, resolutions: ["720P", "1080P"], audio: "toggle" },
   "wan2.7-i2v": { protocol: "media", promptLimit: 5000, durations: "range", minDuration: 2, maxDuration: 15, resolutions: ["720P", "1080P"], audio: "automatic" },
   "wan2.7-i2v-2026-04-25": { protocol: "media", promptLimit: 5000, durations: "range", minDuration: 2, maxDuration: 15, resolutions: ["720P", "1080P"], audio: "automatic" },
@@ -48,6 +54,12 @@ function getAlibabaVideoModelChain(env = process.env) {
     .filter((model) => MODEL_CAPABILITIES[model]);
   const chain = [configuredPrimary, ...configuredChain.filter((model) => model !== configuredPrimary)];
   return [...new Set(chain)].filter((model) => MODEL_CAPABILITIES[model]);
+}
+
+function getAlibabaReferenceVideoModelChain(env = process.env) {
+  const configured = (env.VIDEO_ALIBABA_REFERENCE_MODEL_CHAIN || DEFAULT_REFERENCE_MODEL_CHAIN.join(","))
+    .split(",").map((model) => model.trim()).filter((model) => MODEL_CAPABILITIES[model]?.protocol === "reference");
+  return [...new Set(configured)];
 }
 
 function isFallbackEnabled(env = process.env) {
@@ -98,8 +110,13 @@ function getModelCompatibility(model, request) {
   const capabilities = MODEL_CAPABILITIES[model];
   if (!capabilities) return { compatible: false, reason: "model_not_configured" };
   if (!request.prompt || typeof request.prompt !== "string") return { compatible: false, reason: "prompt_required" };
-  if (!request.imageData || typeof request.imageData !== "string") return { compatible: false, reason: "image_required" };
-  if (getDataUriByteLength(request.imageData) > (capabilities.protocol === "legacy" && model.startsWith("wan2.2") || model.startsWith("wanx2.1") ? 10 * 1024 * 1024 : MAX_IMAGE_BYTES)) {
+  if (capabilities.protocol === "reference") {
+    if (!request.referenceImageData?.length) return { compatible: false, reason: "reference_image_required" };
+  } else if (!request.imageData || typeof request.imageData !== "string") return { compatible: false, reason: "image_required" };
+  const checkedImages = capabilities.protocol === "reference"
+    ? [...request.referenceImageData, ...(request.firstFrameImageData ? [request.firstFrameImageData] : [])]
+    : [request.imageData];
+  if (checkedImages.some((image) => getDataUriByteLength(image) > (capabilities.protocol === "legacy" && model.startsWith("wan2.2") || model.startsWith("wanx2.1") ? 10 * 1024 * 1024 : MAX_IMAGE_BYTES))) {
     return { compatible: false, reason: "image_exceeds_model_limit" };
   }
   if (request.audio && capabilities.audio === "none") return { compatible: false, reason: "model_does_not_support_audio" };
@@ -109,7 +126,15 @@ function getModelCompatibility(model, request) {
 
 function buildModelRequest(model, request) {
   const capabilities = MODEL_CAPABILITIES[model];
-  const input = capabilities.protocol === "media"
+  const input = capabilities.protocol === "reference"
+    ? {
+        prompt: request.prompt,
+        media: [
+          ...(request.frameMode === "first_frame" && request.firstFrameImageData ? [{ type: "first_frame", url: request.firstFrameImageData }] : []),
+          ...request.referenceImageData.map((url) => ({ type: "reference_image", url })),
+        ],
+      }
+    : capabilities.protocol === "media"
     ? { prompt: request.prompt, media: [{ type: "first_frame", url: request.imageData }] }
     : { prompt: request.prompt, img_url: request.imageData };
   const parameters = {
@@ -300,7 +325,7 @@ function logPreflight(request, models, imageUrl) {
       resolution: request.resolution,
       audioMode: request.audio ? "ai_audio" : "no_audio",
       hasReferenceImage: Boolean(imageUrl),
-      referenceImage: { mimeType: imageMime, hasUrlOrData: Boolean(imageUrl), byteLength: getDataUriByteLength(request.imageData) },
+      referenceImage: { mimeType: imageMime, hasUrlOrData: Boolean(imageUrl), byteLength: request.imageData ? getDataUriByteLength(request.imageData) : null, referenceCount: request.referenceImageData?.length || 0, frameMode: request.frameMode },
       promptCharacters: [...request.prompt].length,
     },
   });
@@ -319,6 +344,8 @@ function logPreflight(request, models, imageUrl) {
 
 async function generateVideo({
   imageUrl,
+  referenceImageUrls = [],
+  frameMode = "reference",
   prompt,
   duration = 5,
   resolution,
@@ -338,24 +365,37 @@ async function generateVideo({
     error.status = 503;
     throw error;
   }
-  if (!imageUrl || typeof imageUrl !== "string") throw new Error("A valid storyboard image URL is required.");
+  if ((!imageUrl || typeof imageUrl !== "string") && !referenceImageUrls.length) throw new Error("A valid reference image is required.");
+  if (!["reference", "first_frame"].includes(frameMode)) throw new Error("Choose reference guidance or an explicit first frame.");
   if (!prompt || typeof prompt !== "string") throw new Error("A valid video prompt is required.");
 
   const apiKey = getApiKey();
-  const imageData = await imageUrlToDataUri(imageUrl);
+  const imageData = imageUrl ? await imageUrlToDataUri(imageUrl) : null;
+  const referenceImageData = [...new Set(await Promise.all(referenceImageUrls.map(imageUrlToDataUri)))];
+  if (frameMode === "reference" && imageUrl) referenceImageData.unshift(imageData);
+  const uniqueReferenceImageData = [...new Set(referenceImageData)];
+  const firstFrameImageData = frameMode === "first_frame" ? imageData : null;
   const promptExtend = process.env.ALIBABA_PROMPT_EXTEND === "true";
   const requestedAudio = Boolean(audio);
   const request = {
     imageData,
+    referenceImageData: uniqueReferenceImageData,
+    firstFrameImageData,
+    frameMode,
     prompt: prompt.trim(),
     duration: normalizeDuration(duration),
     resolution: resolution === "1080P" ? "1080P" : "720P",
     audio: requestedAudio,
     promptExtend,
   };
-  const configuredChain = getAlibabaVideoModelChain();
+  const usesReferenceModel = frameMode === "reference" || uniqueReferenceImageData.length > 0;
+  const configuredChain = usesReferenceModel ? getAlibabaReferenceVideoModelChain() : getAlibabaVideoModelChain();
   if (requestedModel && !configuredChain.includes(canonicalModel(requestedModel))) {
-    const error = new Error("The selected video model is not in the configured Alibaba model chain.");
+    const otherModeChain = usesReferenceModel ? getAlibabaVideoModelChain() : getAlibabaReferenceVideoModelChain();
+    const message = otherModeChain.includes(canonicalModel(requestedModel))
+      ? "The selected video model does not support this reference mode. Choose Wan 2.7 Reference-to-Video, or switch to explicit first-frame mode."
+      : "The selected video model is not in the configured Alibaba model chain.";
+    const error = new Error(message);
     error.status = 400;
     throw error;
   }
@@ -436,7 +476,9 @@ async function generateVideo({
     throw summary;
   }
 
-  const noCompatibleModel = new Error("No configured Alibaba video model supports this prompt, image, duration, resolution, and audio selection.");
+  const noCompatibleModel = new Error(frameMode === "reference" && !requestedAudio
+    ? "Wan reference-to-video currently generates audio automatically. Turn on AI audio, or switch to explicit first-frame mode for a silent-video model."
+    : "No configured Alibaba video model supports this prompt, image, duration, resolution, and audio selection.");
   noCompatibleModel.status = 422;
   noCompatibleModel.attemptedModels = attemptedModels;
   noCompatibleModel.skippedModels = skippedModels;
@@ -446,6 +488,7 @@ async function generateVideo({
 module.exports = {
   generateVideo,
   getAlibabaVideoModelChain,
+  getAlibabaReferenceVideoModelChain,
   buildModelRequest,
   getModelCompatibility,
   classifyAlibabaVideoError,

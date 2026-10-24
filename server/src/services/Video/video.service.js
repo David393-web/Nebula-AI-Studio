@@ -6,6 +6,7 @@ const allowedTypes = ["VIDEO"];
 class VideoService {
   // CREATE VIDEO
   async createVideo({
+    id,
     name,
     prompt,
     url,
@@ -67,6 +68,7 @@ class VideoService {
     }
 
     return videoRepository.create({
+      ...(id ? { id } : {}),
       name: name.trim(),
       prompt: prompt?.trim() || null,
       url: url.trim(),

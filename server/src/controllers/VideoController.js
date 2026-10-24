@@ -1,5 +1,6 @@
 const videoService = require("../services/Video/video.service");
 const downloadLocalMedia = require("../utils/downloadLocalMedia");
+const sendStoredMedia = require("../utils/sendStoredMedia");
 
 const {
   validateVideoCreate,
@@ -115,6 +116,13 @@ class VideoController {
     try {
       const video = await videoService.getVideo(req.params.id, req.user.userId);
       return downloadLocalMedia(res, video, "nebula-video");
+    } catch (error) { next(error); }
+  }
+
+  async media(req, res, next) {
+    try {
+      const video = await videoService.getVideo(req.params.id, req.user.userId);
+      return sendStoredMedia(res, video, "nebula-video");
     } catch (error) { next(error); }
   }
 

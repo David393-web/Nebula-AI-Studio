@@ -3,6 +3,7 @@ const projectRepository = require("../../repositories/ProjectRepository");
 
 class ImageService {
   async createImage({
+    id,
     name,
     prompt,
     url,
@@ -45,6 +46,7 @@ class ImageService {
     }
 
     return imageRepository.create({
+      ...(id ? { id } : {}),
       name: name.trim(),
       prompt:
         prompt && prompt.trim()

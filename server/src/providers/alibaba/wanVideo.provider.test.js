@@ -8,6 +8,7 @@ const ORIGINAL_ENV = {};
 const TEST_ENV_KEYS = [
   "DASHSCOPE_API_KEY",
   "VIDEO_ALIBABA_MODEL_CHAIN",
+  "VIDEO_ALIBABA_REFERENCE_MODEL_CHAIN",
   "VIDEO_ALIBABA_FALLBACK_ENABLED",
   "ALIBABA_VIDEO_MODEL",
   "ALIBABA_VIDEO_ENABLED",
@@ -75,7 +76,7 @@ function setup(t, env, outcomes) {
   return calls;
 }
 
-const baseRequest = { imageUrl: IMAGE, prompt: "A cinematic scene", duration: 8, resolution: "1080P", audio: true };
+const baseRequest = { imageUrl: IMAGE, frameMode: "first_frame", prompt: "A cinematic scene", duration: 8, resolution: "1080P", audio: true };
 
 test("primary Wan 2.6 Flash succeeds without trying a fallback", async (t) => {
   const calls = setup(t, { VIDEO_ALIBABA_MODEL_CHAIN: "wan2.6-i2v-flash,wan2.7-i2v" });
@@ -87,6 +88,36 @@ test("primary Wan 2.6 Flash succeeds without trying a fallback", async (t) => {
   assert.equal(result.audioRequested, true);
   assert.equal(result.audioGenerated, true);
   assert.equal(started.length, 1);
+});
+
+test("Wan 2.7 reference mode sends guidance as reference_image, never as first_frame", async (t) => {
+  const calls = setup(t, { VIDEO_ALIBABA_REFERENCE_MODEL_CHAIN: "wan2.7-r2v" });
+  const result = await provider.generateVideo({
+    imageUrl: IMAGE,
+    referenceImageUrls: [IMAGE],
+    frameMode: "reference",
+    prompt: "Preserve the subject identity",
+    duration: 5,
+    resolution: "720P",
+    audio: true,
+  });
+  assert.equal(result.model, "wan2.7-r2v");
+  assert.deepEqual(calls[0].body.input.media.map((item) => item.type), ["reference_image"]);
+  assert.equal(calls[0].body.input.media[0].url, IMAGE);
+});
+
+test("explicit first frame is preserved and can be combined with Wan 2.7 identity references", async (t) => {
+  const calls = setup(t, { VIDEO_ALIBABA_REFERENCE_MODEL_CHAIN: "wan2.7-r2v" });
+  await provider.generateVideo({
+    imageUrl: IMAGE,
+    referenceImageUrls: ["data:image/png;base64,Ag=="],
+    frameMode: "first_frame",
+    prompt: "Animate this shot",
+    duration: 5,
+    resolution: "720P",
+    audio: true,
+  });
+  assert.deepEqual(calls[0].body.input.media.map((item) => item.type), ["first_frame", "reference_image"]);
 });
 
 test("a manually selected configured Wan model starts first and keeps fallback controls", async (t) => {
@@ -323,4 +354,3 @@ test("default chain contains only the requested I2V models and can be disabled s
   assert.equal(provider.isFallbackEnabled({}), true);
 });
 
-\n

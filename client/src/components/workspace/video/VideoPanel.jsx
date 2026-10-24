@@ -37,6 +37,7 @@ export default function VideoPanel({
   const [quality, setQuality] = useState("720P");
   const [duration, setDuration] = useState("5");
   const [audioEnabled, setAudioEnabled] = useState(true);
+  const [frameMode, setFrameMode] = useState("reference");
   const [videoCosts, setVideoCosts] = useState(null);
 
   const [isGenerating, setIsGenerating] = useState(false);
@@ -225,6 +226,7 @@ export default function VideoPanel({
           sceneId: sourceScene.id || null,
           imageId: sourceScene.imageId || (sourceScene.generatedType === "image" ? sourceScene.generatedId : null),
           imageUrl,
+          frameMode,
           prompt: videoPrompt,
           duration: sceneDuration,
           quality,
@@ -397,6 +399,9 @@ export default function VideoPanel({
             onDurationChange={setDuration}
             audioEnabled={audioEnabled}
             onAudioChange={setAudioEnabled}
+            frameMode={frameMode}
+            audioMode={frameMode === "reference" ? "automatic" : undefined}
+            onFrameModeChange={(value) => { setFrameMode(value); if (value === "reference") setAudioEnabled(true); }}
           />
         </div>
 

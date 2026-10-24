@@ -4,6 +4,7 @@ const helmet = require("helmet");
 const morgan = require("morgan");
 const cookieParser = require("cookie-parser");
 const path = require("path");
+const getMediaStorageRoot = require("./utils/mediaStorageRoot");
 
 const authRoutes = require("./routes/auth.routes");
 const projectRoutes = require("./routes/projects.routes");
@@ -53,12 +54,13 @@ app.use(cookieParser());
 
 // Static uploaded files
 app.use("/uploads", (req, res, next) => {
+  if (req.path.startsWith("/private/")) return res.sendStatus(404);
   // The UI (5173) and API (5000) are separate origins during local development.
   // Allow browser media elements to read the public generated assets.
   res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
   next();
 });
-app.use("/uploads", express.static(path.join(process.cwd(), "uploads"), {
+app.use("/uploads", express.static(getMediaStorageRoot(), {
   acceptRanges: true,
   setHeaders(res, filePath) {
     if (/\.mp4$/i.test(filePath)) res.setHeader("Content-Type", "video/mp4");

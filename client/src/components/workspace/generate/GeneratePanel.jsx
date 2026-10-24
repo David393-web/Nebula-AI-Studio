@@ -39,6 +39,7 @@ export default function GeneratePanel({
   const [videoDuration, setVideoDuration] = useState(String(scene?.durationSeconds || 5));
   const [videoQuality, setVideoQuality] = useState("720P");
   const [videoAudioEnabled, setVideoAudioEnabled] = useState(scene?.audioMode === "silent" ? false : true);
+  const [videoFrameMode, setVideoFrameMode] = useState("reference");
 
   const [prompt, setPrompt] = useState(scene?.prompt || initialPrompt || "");
 
@@ -202,21 +203,27 @@ export default function GeneratePanel({
         });
       } else {
         let imageUrl = sceneSourceImage || (result?.type === "image" ? result.url : null) || referenceImages[0]?.url;
-        if (!sceneSourceImage && referenceImages[0]?.file) {
-          const form = new FormData();
-          form.append("file", referenceImages[0].file);
-          const upload = await api.post("/storage/upload", form, {
-            headers: { "Content-Type": "multipart/form-data" },
-          });
-          const uploadedPath = upload.data?.data?.file?.url;
-          if (!uploadedPath) throw new Error("The reference image could not be uploaded.");
-          const apiOrigin = new URL(api.defaults.baseURL, window.location.origin).origin;
-          imageUrl = `${apiOrigin}${uploadedPath}`;
+        const videoReferenceImageIds = [];
+        for (const reference of referenceImages) {
+          if (reference.assetId) videoReferenceImageIds.push(reference.assetId);
+          else if (reference.file) {
+            const form = new FormData(); form.append("file", reference.file);
+            const upload = await api.post("/storage/upload", form, { headers: { "Content-Type": "multipart/form-data" } });
+            const saved = upload.data?.data?.image;
+            const uploadedPath = upload.data?.data?.file?.url;
+            if (saved?.id) videoReferenceImageIds.push(saved.id);
+            if (!imageUrl && uploadedPath) {
+              const apiOrigin = new URL(api.defaults.baseURL, window.location.origin).origin;
+              imageUrl = `${apiOrigin}${uploadedPath}`;
+            }
+          }
         }
         if (!imageUrl) throw new Error("Add a reference image, or generate an image first, to create a video.");
         const sceneAudioPrompt = scene ? [scene.audioPrompt || "", sceneScript.blocks?.filter((block) => ["dialogue", "narration", "audio"].includes(block.type)).map((block) => `${block.type.toUpperCase()}${block.characterName ? ` (${block.characterName})` : ""}: ${block.text || ""}`).join("\n")].filter(Boolean).join("\n\n") : "";
         const response = await api.post("/generation/video", {
           imageUrl,
+          referenceImageIds: [...new Set(videoReferenceImageIds)],
+          frameMode: videoFrameMode,
           prompt: generationPrompt,
           duration: videoDuration,
           quality: scene?.videoQuality || videoQuality,
@@ -224,7 +231,7 @@ export default function GeneratePanel({
           projectId: projectId || scene?.projectId || null,
           audio: videoAudioEnabled,
           audioPrompt: sceneAudioPrompt,
-          characterIds: scene ? selectedSceneCharacters.map((character) => character.id).filter(Boolean) : [],
+          characterIds: scene ? selectedSceneCharacters.map((character) => character.id).filter(Boolean) : selectedCharacter?.id ? [selectedCharacter.id] : [],
           sceneScript: scene ? sceneScript : null,
           generationSource: scene ? "storyboard" : "independent",
           modelId: selectedModel?.id || "auto",
@@ -266,6 +273,7 @@ export default function GeneratePanel({
         type,
 
         url: generatedUrl,
+        downloadUrl: generationResponse?.id ? `${api.defaults.baseURL.replace(/\/$/, "")}/${type === "video" ? "videos" : "images"}/${encodeURIComponent(generationResponse.id)}/download` : generatedUrl,
 
         prompt: prompt.trim(),
 
@@ -556,12 +564,13 @@ export default function GeneratePanel({
           {/* Generation Settings */}
           <div className="p-6 border rounded-2xl border-zinc-800 bg-zinc-900">
             <ModelSelector type={type} value={selectedModelId} requiredAudio={scene && type === "video" ? scene.audioMode === "silent" ? false : scene.audioMode === "ai_audio" ? true : undefined : undefined} onChange={(id, modelOption) => { setSelectedModelId(id); setSelectedModel(modelOption); if (!scene && type === "video" && modelOption?.audioMode === "automatic") setVideoAudioEnabled(true); if (!scene && type === "video" && modelOption?.audioMode === "none") setVideoAudioEnabled(false); }} />
-            {type === "image" ? <GenerationSettings /> : <VideoSettings quality={videoQuality} onQualityChange={setVideoQuality} duration={videoDuration} onDurationChange={(value) => { setVideoDuration(value); setError(""); setErrorCode(""); }} audioEnabled={videoAudioEnabled} audioMode={selectedModel?.audioMode} onAudioChange={(value) => { setVideoAudioEnabled(value); setError(""); setErrorCode(""); }} />}
+            {type === "image" ? <GenerationSettings /> : <VideoSettings quality={videoQuality} onQualityChange={setVideoQuality} duration={videoDuration} onDurationChange={(value) => { setVideoDuration(value); setError(""); setErrorCode(""); }} audioEnabled={videoAudioEnabled} audioMode={videoFrameMode === "reference" ? "automatic" : selectedModel?.audioMode} onAudioChange={(value) => { setVideoAudioEnabled(value); setError(""); setErrorCode(""); }} frameMode={videoFrameMode} onFrameModeChange={(value) => { setVideoFrameMode(value); if (value === "reference") setVideoAudioEnabled(true); }} />}
           </div>
 
           {/* Generation Preview */}
           <GenerationPreview
             result={result?.url}
+            downloadUrl={result?.downloadUrl || result?.url}
             type={result?.type || type}
             loading={loading}
             sourceLabel={scene ? `Storyboard · ${scene.title || scene.name || "Scene"}` : "Independent generation"}

@@ -38,7 +38,7 @@ export default function ReferenceImages({ onImagesChange, value }) {
         </h3>
 
         <p className="mt-1 text-xs text-zinc-500">
-          Add images to guide the generation.
+          FLUX.2 Pro uses these as actual visual references. It guides identity and appearance, but does not guarantee a pixel-perfect identity lock.
         </p>
       </div>
 

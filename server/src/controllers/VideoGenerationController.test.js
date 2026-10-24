@@ -98,6 +98,20 @@ test("controller refunds one original charge once if every fallback attempt fail
   assert.match(res.body.message, /All compatible Alibaba video models/);
 });
 
+test("controller does not mark an asset complete and refunds credits when durable video storage fails", async (t) => {
+  const calls = setup(t, async ({ onStarted }) => {
+    await onStarted({ taskId: "task-storage-failure", model: "wan2.7-r2v" });
+    return { provider: "alibaba", model: "wan2.7-r2v", url: "https://provider.example/video.mp4", duration: 5 };
+  });
+  videoStorageService.saveFromUrl = async () => { throw new Error("persistent disk unavailable"); };
+  const res = responseCapture();
+  await controller.generate(request(), res);
+  assert.equal(calls.charge, 1);
+  assert.equal(calls.refund, 1);
+  assert.equal(res.statusCode, 500);
+  assert.equal(res.body.success, false);
+});
+
 test("generation progress is visible only to the authenticated request owner", () => {
   const requestId = "private-progress-request";
   videoGenerationStatusService.update("user-1", requestId, { state: "switching", model: "wan2.6-i2v-flash", nextModel: "wan2.7-i2v" });
@@ -111,4 +125,3 @@ test("generation progress is visible only to the authenticated request owner", (
   assert.equal(otherResponse.statusCode, 404);
 });
 
-\n

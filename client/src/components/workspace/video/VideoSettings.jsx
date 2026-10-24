@@ -8,6 +8,8 @@ export default function VideoSettings({
   audioEnabled = true,
   onAudioChange,
   audioMode,
+  frameMode = "reference",
+  onFrameModeChange,
 }) {
   const qualities = [
     {
@@ -66,6 +68,13 @@ export default function VideoSettings({
       </div>
 
       <div className="p-5 space-y-6">
+        <div>
+          <p className="mb-3 text-xs font-medium text-zinc-300">How should the source image be used?</p>
+          <div className="grid grid-cols-2 gap-2">
+            {[{ value: "reference", label: "Visual reference" }, { value: "first_frame", label: "First frame" }].map((option) => <button key={option.value} type="button" onClick={() => onFrameModeChange?.(option.value)} aria-pressed={frameMode === option.value} className={`rounded-xl border px-3 py-3 text-sm ${frameMode === option.value ? "border-purple-500 bg-purple-500/10 text-purple-200" : "border-zinc-800 bg-zinc-950 text-zinc-400"}`}>{option.label}</button>)}
+          </div>
+          <p className="mt-2 text-[10px] leading-4 text-zinc-600">Visual reference guides appearance and scene without forcing the still into the opening. First frame starts the video from this exact image.</p>
+        </div>
         <div>
           <p className="mb-3 text-xs font-medium text-zinc-300">Video audio</p>
           <div className="grid grid-cols-2 gap-2">
@@ -208,7 +217,7 @@ export default function VideoSettings({
         {/* Info */}
         <div className="p-3 border rounded-xl border-purple-500/10 bg-purple-500/5">
           <p className="text-[11px] leading-5 text-zinc-500">
-            Wan preserves the aspect ratio of the source storyboard image.
+            {frameMode === "first_frame" ? "Wan preserves the aspect ratio of the selected first frame." : "Reference-to-video generates a new scene from the visual references; use first-frame mode when the output must begin from an exact image."}
             Higher resolutions and longer clips may increase generation time.
           </p>
         </div>

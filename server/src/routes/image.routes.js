@@ -27,6 +27,7 @@ router.get(
   imageController.getAll
 );
 
+router.get("/:id/media", imageController.media);
 router.get("/:id/download", imageController.download);
 
 // Get single image

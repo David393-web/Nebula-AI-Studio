@@ -3,17 +3,20 @@ const path = require("path");
 const { randomUUID } = require("crypto");
 const { Readable, Transform } = require("stream");
 const { pipeline } = require("stream/promises");
+const getMediaStorageRoot = require("../../utils/mediaStorageRoot");
+const retryTransient = require("../../utils/retryTransient");
 
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 
 class StorageService {
   async saveRemoteImage(imageUrl) {
-    const response = await fetch(imageUrl);
+    return retryTransient(async () => {
+    const response = await fetch(imageUrl, { signal: AbortSignal.timeout(60000) });
 
     if (!response.ok || !response.body) {
-      throw new Error(
-        `Generated image could not be downloaded. HTTP ${response.status}.`,
-      );
+      const error = new Error(`Generated image could not be downloaded. HTTP ${response.status}.`);
+      error.status = response.status;
+      throw error;
     }
 
     const contentType = (response.headers.get("content-type") || "")
@@ -38,7 +41,7 @@ class StorageService {
       throw new Error("Generated image exceeds the 20 MB storage limit.");
     }
 
-    const directory = path.join(process.cwd(), "uploads", "images");
+    const directory = path.join(getMediaStorageRoot(), "private", "images");
     const fileName = `${randomUUID()}.${extension}`;
     const filePath = path.join(directory, fileName);
     let bytesWritten = 0;
@@ -70,9 +73,11 @@ class StorageService {
     }
 
     return {
-      path: `/uploads/images/${fileName}`,
+      path: null,
       size: bytesWritten,
+      storageKey: `private/images/${fileName}`,
     };
+    });
   }
 
   getFileInfo(file) {
@@ -99,11 +104,19 @@ class StorageService {
       throw error;
     }
 
-    const filePath = path.join(
-      process.cwd(),
-      "uploads",
-      fileName
-    );
+    if (path.basename(fileName) !== fileName || fileName.includes("private")) {
+      const error = new Error("Only top-level uploaded files can be deleted here.");
+      error.status = 400;
+      throw error;
+    }
+
+    const root = getMediaStorageRoot();
+    const filePath = path.resolve(root, fileName);
+    if (!filePath.startsWith(`${root}${path.sep}`)) {
+      const error = new Error("Invalid file name.");
+      error.status = 400;
+      throw error;
+    }
 
     if (!fs.existsSync(filePath)) {
       const error = new Error("File not found");

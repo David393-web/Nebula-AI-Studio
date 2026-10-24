@@ -1,11 +1,9 @@
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
+const getMediaStorageRoot = require("../utils/mediaStorageRoot");
 
-const uploadDirectory = path.join(
-  process.cwd(),
-  "uploads"
-);
+const uploadDirectory = getMediaStorageRoot();
 
 // Create uploads directory if it doesn't exist
 if (!fs.existsSync(uploadDirectory)) {
