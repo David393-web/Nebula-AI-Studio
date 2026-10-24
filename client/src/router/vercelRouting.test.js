@@ -10,7 +10,8 @@ test("Vercel serves the SPA entry point for client-side routes", () => {
 test("Vercel config is present at either supported project root", () => {
   const clientConfig = JSON.parse(readFileSync(new URL("../../vercel.json", import.meta.url), "utf8"));
   const repositoryConfig = JSON.parse(readFileSync(new URL("../../../vercel.json", import.meta.url), "utf8"));
-  assert.deepEqual(repositoryConfig, clientConfig);
+  assert.deepEqual(repositoryConfig.rewrites, clientConfig.rewrites);
+  assert.deepEqual(clientConfig.headers.map(({ source }) => source), ["/manifest.webmanifest", "/sw.js"]);
 });
 
 test("the Vite production build emits the rewritten entry point", () => {

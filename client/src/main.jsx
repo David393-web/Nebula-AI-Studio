@@ -15,6 +15,15 @@ import "@/styles/typography.css";
 import "@/styles/animations.css";
 import "@/styles/tailwind.css";
 
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker
+      .register("/sw.js", { scope: "/", updateViaCache: "none" })
+      .then((registration) => registration.update())
+      .catch((error) => console.error("Service worker registration failed:", error));
+  });
+}
+
 createRoot(document.getElementById("root")).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
