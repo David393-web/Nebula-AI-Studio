@@ -152,6 +152,8 @@ function classifyAlibabaVideoError(error) {
   const message = String(error?.providerMessage || error?.message || "").toLowerCase();
   const combined = `${code} ${message}`;
 
+  if (/tasktimeout|still processing|task is running/.test(combined)) return "TASK_STILL_RUNNING";
+
   if (/allocationquota\.freetieronly|free.?tier.{0,30}(quota|exhaust)|(?:quota|free.?tier).{0,30}(exhaust|deplet|insufficient)|(?:exhaust|deplet).{0,30}(?:free.?tier|quota)|resource.?exhausted|insufficient.?balance/.test(combined)) {
     return "QUOTA_EXHAUSTED";
   }
@@ -217,6 +219,7 @@ function sleep(ms) {
 async function createVideoTask({ model, body, apiKey }) {
   const response = await fetch(`${API_BASE_URL}/services/aigc/video-generation/video-synthesis`, {
     method: "POST",
+    signal: AbortSignal.timeout(30_000),
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
@@ -243,29 +246,29 @@ async function createVideoTask({ model, body, apiKey }) {
 async function getVideoTask(taskId, model, apiKey) {
   const response = await fetch(`${API_BASE_URL}/tasks/${encodeURIComponent(taskId)}`, {
     method: "GET",
+    signal: AbortSignal.timeout(15_000),
     headers: { Authorization: `Bearer ${apiKey}` },
   });
   const data = await parseResponse(response);
   if (!response.ok) throw safeProviderError(data, response.status, model, apiKey);
   const output = data?.output || {};
-  if (["FAILED", "CANCELED"].includes(output.task_status)) {
-    throw safeProviderError({
-      code: output.code || data?.code,
-      message: output.message || data?.message || `Alibaba video task ${output.task_status.toLowerCase()}.`,
-      request_id: data?.request_id,
-    }, 200, model, apiKey);
-  }
-  if (output.task_status === "UNKNOWN") {
-    const error = new Error("Alibaba video task became unavailable.");
-    error.provider = "alibaba";
-    error.model = model;
-    error.providerStatus = 404;
-    error.providerCode = "TaskUnavailable";
-    error.requestId = data?.request_id || null;
-    error.providerMessage = error.message;
-    throw error;
-  }
   return data;
+}
+
+async function getVideoTaskStatus(taskId, model) {
+  const data = await getVideoTask(taskId, model, getApiKey());
+  return {
+    taskId,
+    requestId: data?.request_id || null,
+    status: data?.output?.task_status || "UNKNOWN",
+    code: data?.output?.code || data?.code || null,
+    message: data?.output?.message || data?.message || null,
+    result: data?.output?.task_status === "SUCCEEDED" && data?.output?.video_url ? {
+      url: data.output.video_url,
+      duration: data?.usage?.output_video_duration || data?.usage?.duration || null,
+      resolution: data?.usage?.SR ? `${data.usage.SR}P` : null,
+    } : null,
+  };
 }
 
 async function waitForVideo(taskId, model, apiKey, generationId) {
@@ -273,6 +276,19 @@ async function waitForVideo(taskId, model, apiKey, generationId) {
   while (Date.now() - startedAt < MAX_WAIT_MS) {
     const data = await getVideoTask(taskId, model, apiKey);
     const output = data?.output || {};
+    if (["FAILED", "CANCELED"].includes(output.task_status)) {
+      throw safeProviderError({ code: output.code || data?.code, message: output.message || data?.message || `Alibaba video task ${output.task_status.toLowerCase()}.`, request_id: data?.request_id }, 200, model, apiKey);
+    }
+    if (output.task_status === "UNKNOWN") {
+      const unavailable = new Error("Alibaba video task became unavailable.");
+      unavailable.provider = "alibaba";
+      unavailable.model = model;
+      unavailable.providerStatus = 404;
+      unavailable.providerCode = "TaskUnavailable";
+      unavailable.requestId = data?.request_id || null;
+      unavailable.providerMessage = unavailable.message;
+      throw unavailable;
+    }
     if (output.task_status === "SUCCEEDED") {
       if (!output.video_url) throw new Error("Alibaba video generation succeeded but no video URL was returned.");
       return {
@@ -285,13 +301,16 @@ async function waitForVideo(taskId, model, apiKey, generationId) {
     }
     await sleep(POLL_INTERVAL_MS);
   }
-  const error = new Error("Alibaba video generation timed out after 5 minutes.");
+  const error = new Error("Alibaba is still processing this video. Check generation status before retrying to avoid creating a duplicate task.");
   error.provider = "alibaba";
   error.model = model;
   error.providerStatus = 504;
   error.providerCode = "TaskTimeout";
+  error.classification = "TASK_STILL_RUNNING";
+  error.quotaExhausted = false;
   error.providerMessage = error.message;
   error.generationId = generationId;
+  error.taskId = taskId;
   throw error;
 }
 
@@ -354,6 +373,7 @@ async function generateVideo({
   onStarted,
   onProgress,
   generationId,
+  awaitCompletion = true,
 }) {
   if (process.env.ALIBABA_VIDEO_ENABLED === "false") {
     const error = new Error("Video generation is disabled by server configuration.");
@@ -402,7 +422,9 @@ async function generateVideo({
   const orderedChain = requestedModel
     ? [canonicalModel(requestedModel), ...configuredChain.filter((model) => model !== canonicalModel(requestedModel))]
     : configuredChain;
-  const models = isFallbackEnabled() ? orderedChain : orderedChain.slice(0, 1);
+  // A manually selected model is an explicit task choice. Never replace it with
+  // another model, even when provider fallback is enabled.
+  const models = requestedModel ? orderedChain.slice(0, 1) : isFallbackEnabled() ? orderedChain : orderedChain.slice(0, 1);
   logPreflight(request, models, imageUrl);
   const attemptedModels = [];
   const skippedModels = [];
@@ -426,9 +448,38 @@ async function generateVideo({
     let task;
     try {
       task = await createVideoTask({ model, body, apiKey });
-      if (onStarted) await onStarted({ taskId: task.taskId, model });
-      const result = await waitForVideo(task.taskId, model, apiKey, generationId);
+      if (onStarted) {
+        try {
+          await onStarted({ taskId: task.taskId, model });
+        } catch (persistenceError) {
+          const error = new Error("DashScope accepted the video task, but its task ID could not be confirmed in local storage.");
+          error.provider = "alibaba";
+          error.providerCode = "TASK_ID_PERSISTENCE_FAILED";
+          error.classification = "TASK_STILL_RUNNING";
+          error.taskId = task.taskId;
+          error.model = model;
+          error.requestId = task.requestId;
+          error.cause = persistenceError;
+          throw error;
+        }
+      }
       const audioGenerated = requestedAudio && compatibility.capabilities.audio !== "none";
+      if (!awaitCompletion) {
+        return {
+          provider: "alibaba", model, taskId: task.taskId,
+          requestId: task.requestId, type: "video", status: "PENDING",
+          duration: body.parameters.duration,
+          requestedDuration: request.duration,
+          requestedResolution: request.resolution,
+          audioRequested: requestedAudio,
+          audioGenerated,
+          attemptedModels,
+          skippedModels,
+          selectedModel: model,
+          fallbackUsed: orderedChain[0] !== model,
+        };
+      }
+      const result = await waitForVideo(task.taskId, model, apiKey, generationId);
       logAttempt({ generationId, model, requestId: result.requestId || task.requestId, startedAt, outcome: "succeeded" });
       return {
         provider: "alibaba",
@@ -492,6 +543,7 @@ module.exports = {
   buildModelRequest,
   getModelCompatibility,
   classifyAlibabaVideoError,
+  getVideoTaskStatus,
   isFallbackEnabled,
   MODEL_CAPABILITIES,
   DEFAULT_MODEL_CHAIN,

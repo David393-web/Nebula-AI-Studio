@@ -24,7 +24,7 @@ function getModelRegistry(env = process.env) {
       availability: videoEnabled ? "configured" : "disabled", availabilityReason: videoEnabled ? null : "Video generation is disabled or not configured on the server.",
       aspectRatios: [], resolutions: capability.resolutions,
       duration: capability.durations === "range" ? { min: capability.minDuration, max: capability.maxDuration } : { values: capability.durations },
-      referenceImages: true, maxReferenceImages: capability.protocol === "reference" ? 5 : 1, negativePrompt: false, audio: audioSupported, audioMode: capability.audio,
+      referenceImages: capability.protocol === "reference", maxReferenceImages: capability.protocol === "reference" ? 5 : 0, negativePrompt: false, audio: audioSupported, audioMode: capability.audio,
       characterConsistency: capability.protocol === "reference", capabilities: [capability.protocol === "reference" ? "Identity references" : "First frame", ...(audioSupported ? ["Audio"] : [])], featured: index === 0,
     };
   });

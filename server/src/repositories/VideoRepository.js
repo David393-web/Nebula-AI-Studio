@@ -38,6 +38,19 @@ class VideoRepository {
     });
   }
 
+  async findByGenerationId(generationId, userId) {
+    const video = await prisma.video.findUnique({ where: { id: generationId } });
+    return video?.userId === userId ? video : null;
+  }
+
+  async claimPoll(id, expectedUpdatedAt, metadata) {
+    const result = await prisma.video.updateMany({
+      where: { id, updatedAt: expectedUpdatedAt },
+      data: { metadata },
+    });
+    return result.count === 1;
+  }
+
   async update(id, data) {
     return prisma.video.update({
       where: {

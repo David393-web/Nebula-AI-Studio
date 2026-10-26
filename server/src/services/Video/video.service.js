@@ -4,6 +4,14 @@ const projectRepository = require("../../repositories/ProjectRepository");
 const allowedTypes = ["VIDEO"];
 
 class VideoService {
+  async getGeneration(generationId, userId) {
+    return videoRepository.findByGenerationId(generationId, userId);
+  }
+
+  async claimGenerationPoll(video, metadata) {
+    return videoRepository.claimPoll(video.id, video.updatedAt, metadata);
+  }
+
   // CREATE VIDEO
   async createVideo({
     id,
@@ -83,7 +91,8 @@ class VideoService {
 
   // GET ALL VIDEOS
   async getVideos(userId) {
-    return videoRepository.findByUser(userId);
+    const videos = await videoRepository.findByUser(userId);
+    return videos.filter((video) => !video.metadata?.state || video.metadata.state === "completed");
   }
 
   // GET VIDEOS FOR A PROJECT
@@ -104,10 +113,8 @@ class VideoService {
       throw error;
     }
 
-    return videoRepository.findByProject(
-      projectId,
-      userId
-    );
+    const videos = await videoRepository.findByProject(projectId, userId);
+    return videos.filter((video) => !video.metadata?.state || video.metadata.state === "completed");
   }
 
   // GET SINGLE VIDEO

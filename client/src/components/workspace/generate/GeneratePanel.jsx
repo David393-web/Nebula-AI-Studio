@@ -20,6 +20,7 @@ import useGenerationStore from "@/stores/generation/generationStore";
 import useCharacterStore from "@/stores/characters/characterStore";
 import useAssetStore from "@/stores/assets/assetStore";
 import api from "@/services/api";
+import { clearPendingVideoGeneration, getPendingVideoGenerations, savePendingVideoGeneration, waitForVideoGeneration } from "@/utils/videoGenerationPolling";
 
 export default function GeneratePanel({
   initialPrompt = "",
@@ -54,6 +55,7 @@ export default function GeneratePanel({
   const [history, setHistory] = useState([]);
 
   const [loading, setLoading] = useState(false);
+  const [videoProgress, setVideoProgress] = useState(null);
 
   const [error, setError] = useState("");
   const [errorCode, setErrorCode] = useState("");
@@ -72,6 +74,38 @@ export default function GeneratePanel({
   const addAsset = useAssetStore(
     (state) => state.addAsset,
   );
+
+  useEffect(() => {
+    let active = true;
+    const recover = async () => {
+      const pendingIds = getPendingVideoGenerations();
+      if (!pendingIds.length) return;
+      setType("video");
+      setLoading(true);
+      try {
+        for (const generationId of pendingIds) {
+          if (!active) return;
+          const abort = new AbortController();
+          const video = await waitForVideoGeneration(api, generationId, (status) => {
+            if ((status.projectId || null) !== (projectId || null) || (status.sceneId && status.sceneId !== scene?.id)) abort.abort();
+            else setVideoProgress(status);
+          }, { signal: abort.signal });
+          if (!active) return;
+          const recovered = { ...video, id: video.id, type: "video", createdAt: video.createdAt || new Date().toISOString() };
+          setResult(recovered);
+          setHistory((current) => [recovered, ...current.filter((item) => item.id !== recovered.id)]);
+          addAsset(recovered);
+          onGenerationComplete?.(recovered);
+        }
+      } catch (recoveryError) {
+        if (active && recoveryError.message !== "Status checking was paused.") setError(recoveryError.response?.data?.message || recoveryError.message || "Could not check the saved generation status.");
+      } finally {
+        if (active) { setLoading(false); setVideoProgress(null); }
+      }
+    };
+    void recover();
+    return () => { active = false; };
+  }, []);
 
   const sceneSourceImage = scene?.imageUrl || scene?.image || ((scene?.generatedType === "image" || (!scene?.generatedType && scene?.type !== "video")) ? scene?.generatedUrl || scene?.generatedImageUrl : null);
   const availableSceneCharacters = useMemo(() => characters.filter((character) => !character.projectId || character.projectId === (projectId || scene?.projectId)), [characters, projectId, scene?.projectId]);
@@ -220,7 +254,11 @@ export default function GeneratePanel({
         }
         if (!imageUrl) throw new Error("Add a reference image, or generate an image first, to create a video.");
         const sceneAudioPrompt = scene ? [scene.audioPrompt || "", sceneScript.blocks?.filter((block) => ["dialogue", "narration", "audio"].includes(block.type)).map((block) => `${block.type.toUpperCase()}${block.characterName ? ` (${block.characterName})` : ""}: ${block.text || ""}`).join("\n")].filter(Boolean).join("\n\n") : "";
-        const response = await api.post("/generation/video", {
+        const generationId = crypto.randomUUID();
+        savePendingVideoGeneration(generationId);
+        let response;
+        try {
+          response = await api.post("/generation/video", {
           imageUrl,
           referenceImageIds: [...new Set(videoReferenceImageIds)],
           frameMode: videoFrameMode,
@@ -235,8 +273,12 @@ export default function GeneratePanel({
           sceneScript: scene ? sceneScript : null,
           generationSource: scene ? "storyboard" : "independent",
           modelId: selectedModel?.id || "auto",
-        }, { timeout: 360000, headers: { "Idempotency-Key": crypto.randomUUID() } });
-        generationResponse = response.data?.data;
+          }, { timeout: 45000, headers: { "Idempotency-Key": generationId } });
+        } catch (submissionError) {
+          if (submissionError.response) { clearPendingVideoGeneration(generationId); throw submissionError; }
+          setVideoProgress({ state: "uncertain", message: "Submission response was interrupted. Checking this request before any retry." });
+        }
+        generationResponse = await waitForVideoGeneration(api, generationId, setVideoProgress);
       }
 
       /*
@@ -539,20 +581,30 @@ export default function GeneratePanel({
             type="button"
             onClick={handleGenerate}
             disabled={
-              loading || !prompt.trim() || videoInsufficientCredits || (errorCode === "CONTENT_SAFETY_REJECTED" && rejectedPrompt === prompt.trim()) || (scene && type === "video" && !sceneSourceImage)
+              loading || !prompt.trim() || videoInsufficientCredits || (type === "video" && ["submission_unknown", "expired"].includes(videoProgress?.state)) || (errorCode === "CONTENT_SAFETY_REJECTED" && rejectedPrompt === prompt.trim()) || (scene && type === "video" && !sceneSourceImage)
             }
             className="flex items-center justify-center w-full gap-2 px-6 py-4 font-medium text-white transition bg-purple-600 rounded-xl hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Sparkles size={18} />
 
             {loading
-              ? "Generating..."
+              ? type === "video" ? videoProgress?.state === "running" ? "Generating video…" : videoProgress?.state === "uncertain" ? "Checking video status…" : "Video task queued…" : "Generating..."
               : `Generate ${
                   type === "image"
                     ? "Image"
                     : "Video"
                 }${creditCosts ? ` · ${type === "image" ? creditCosts.image : activeVideoCost ?? creditCosts.video} credits` : ""}`}
           </button>
+          {loading && type === "video" && <p role="status" className="mt-2 text-center text-xs text-violet-300">{videoProgress?.message || (videoProgress?.state === "running" ? "Alibaba is rendering your video…" : "Video task accepted. Checking status without creating another task…")}</p>}
+          {type === "video" && !loading && ["submission_unknown", "expired"].includes(videoProgress?.state) && videoProgress?.generationId && <button type="button" className="mt-2 w-full text-xs text-amber-300 underline" onClick={async () => {
+            setLoading(true); setError("");
+            try {
+              const video = await waitForVideoGeneration(api, videoProgress.generationId, setVideoProgress);
+              const recovered = { ...video, type: "video", createdAt: video.createdAt || new Date().toISOString() };
+              setResult(recovered); setHistory((current) => [recovered, ...current.filter((item) => item.id !== recovered.id)]); addAsset(recovered); onGenerationComplete?.(recovered);
+            } catch (error) { setError(error.response?.data?.message || error.message || "Could not check generation status."); }
+            finally { setLoading(false); }
+          }}>{videoProgress.state === "expired" ? "Check the saved generation record again — do not submit another request" : "Check this generation status again — do not submit another request"}</button>}
           {type === "video" && activeVideoCost != null && <p className={`text-center text-xs ${videoInsufficientCredits ? "text-amber-300" : "text-zinc-500"}`}>
             {creditBalance == null ? `This ${videoDuration}s ${videoAudioEnabled ? "AI Audio" : "silent"} clip costs ${activeVideoCost} credits.` : `Balance: ${creditBalance} credits · This ${videoDuration}s ${videoAudioEnabled ? "AI Audio" : "silent"} clip costs ${activeVideoCost}.`}
             {videoInsufficientCredits && <> <a href="/billing" className="text-violet-300 underline underline-offset-2">Get more credits</a> or choose a lower-cost silent clip.</>}
@@ -564,7 +616,10 @@ export default function GeneratePanel({
           {/* Generation Settings */}
           <div className="p-6 border rounded-2xl border-zinc-800 bg-zinc-900">
             <ModelSelector type={type} value={selectedModelId} requiredAudio={scene && type === "video" ? scene.audioMode === "silent" ? false : scene.audioMode === "ai_audio" ? true : undefined : undefined} onChange={(id, modelOption) => { setSelectedModelId(id); setSelectedModel(modelOption); if (!scene && type === "video" && modelOption?.audioMode === "automatic") setVideoAudioEnabled(true); if (!scene && type === "video" && modelOption?.audioMode === "none") setVideoAudioEnabled(false); }} />
-            {type === "image" ? <GenerationSettings /> : <VideoSettings quality={videoQuality} onQualityChange={setVideoQuality} duration={videoDuration} onDurationChange={(value) => { setVideoDuration(value); setError(""); setErrorCode(""); }} audioEnabled={videoAudioEnabled} audioMode={videoFrameMode === "reference" ? "automatic" : selectedModel?.audioMode} onAudioChange={(value) => { setVideoAudioEnabled(value); setError(""); setErrorCode(""); }} frameMode={videoFrameMode} onFrameModeChange={(value) => { setVideoFrameMode(value); if (value === "reference") setVideoAudioEnabled(true); }} />}
+            {type === "image" ? <GenerationSettings /> : <>
+              {selectedModel && !selectedModel.characterConsistency && videoFrameMode === "reference" && <p role="alert" className="mb-3 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-200">{selectedModel.displayName} supports first-frame image-to-video. Switch to explicit first-frame mode or choose a reference-to-video model.</p>}
+              <VideoSettings quality={videoQuality} onQualityChange={setVideoQuality} duration={videoDuration} onDurationChange={(value) => { setVideoDuration(value); setError(""); setErrorCode(""); }} audioEnabled={videoAudioEnabled} audioMode={videoFrameMode === "reference" ? "automatic" : selectedModel?.audioMode} onAudioChange={(value) => { setVideoAudioEnabled(value); setError(""); setErrorCode(""); }} frameMode={videoFrameMode} onFrameModeChange={(value) => { setVideoFrameMode(value); if (value === "reference") setVideoAudioEnabled(true); }} />
+            </>}
           </div>
 
           {/* Generation Preview */}

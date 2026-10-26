@@ -1,6 +1,7 @@
 const imageService = require("../services/Image/image.service");
 const downloadLocalMedia = require("../utils/downloadLocalMedia");
 const sendStoredMedia = require("../utils/sendStoredMedia");
+const publicMediaMetadata = require("../utils/publicMediaMetadata");
 
 class ImageController {
   async create(req, res, next) {
@@ -19,7 +20,7 @@ class ImageController {
         prompt,
         url,
         thumbnailUrl,
-        metadata,
+        metadata: publicMediaMetadata(metadata),
         projectId,
         userId: req.user.userId,
       });
@@ -76,14 +77,14 @@ class ImageController {
   async download(req, res, next) {
     try {
       const image = await imageService.getImage(req.params.id, req.user.userId);
-      return downloadLocalMedia(res, image, "nebula-image");
+      return await downloadLocalMedia(res, image, "nebula-image");
     } catch (error) { next(error); }
   }
 
   async media(req, res, next) {
     try {
       const image = await imageService.getImage(req.params.id, req.user.userId);
-      return sendStoredMedia(res, image, "nebula-image");
+      return await sendStoredMedia(res, image, "nebula-image");
     } catch (error) { next(error); }
   }
 
@@ -94,7 +95,7 @@ class ImageController {
       const image = await imageService.updateImage(
         id,
         req.user.userId,
-        req.body,
+        { ...req.body, ...(req.body.metadata !== undefined ? { metadata: publicMediaMetadata(req.body.metadata) } : {}) },
       );
 
       return res.status(200).json({

@@ -208,7 +208,8 @@ class ImageGenerationController {
       });
 
       phase = "image_download";
-      const storedImage = await storageService.saveRemoteImage(result.url);
+      const generationId = idempotencyKey || randomUUID();
+      const storedImage = await storageService.saveRemoteImage(result.url, { userId, generationId });
       const publicBaseUrl = (
         process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get("host")}`
       ).replace(/\/$/, "");
@@ -218,7 +219,7 @@ class ImageGenerationController {
         name: finalPrompt.slice(0, 80) || "Generated image",
         prompt: finalPrompt,
         url: `${publicBaseUrl}/api/images/${imageId}/media`,
-        metadata: { provider: result.provider, model: result.model, providerUrl: result.url, storageKey: storedImage.storageKey, storageSize: storedImage.size, generationId: idempotencyKey || null, mediaType: "image", ratio, quality, characterIds, sceneId: sceneId || null, generationSource: generationSource || (sceneId ? "storyboard" : "independent"), sceneScript: savedScene?.metadata?.sceneScript || null },
+        metadata: { provider: result.provider, model: result.model, providerUrl: result.url, storageProvider: storedImage.provider, storageBucket: storedImage.bucket, storageKey: storedImage.storageKey, localStorageKey: storedImage.localStorageKey, storageSize: storedImage.size, storageMimeType: storedImage.mimeType, ownerUserId: userId, generationId, mediaType: "image", ratio, quality, characterIds, sceneId: sceneId || null, generationSource: generationSource || (sceneId ? "storyboard" : "independent"), sceneScript: savedScene?.metadata?.sceneScript || null },
         userId,
         projectId: projectId || null,
       });

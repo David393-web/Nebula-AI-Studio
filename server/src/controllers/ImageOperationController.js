@@ -48,14 +48,15 @@ class ImageOperationController {
       const publicBaseUrl = (process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get("host")}`).replace(/\/$/, "");
       const images = [];
       for (const result of results) {
-        const saved = await storageService.saveRemoteImage(result.url);
         const imageIdForMedia = randomUUID();
+        const generationId = key || imageIdForMedia;
+        const saved = await storageService.saveRemoteImage(result.url, { userId, generationId });
         images.push(await imageService.createImage({
           id: imageIdForMedia,
           name: `${source.name || "Image"} · edited`,
           prompt: instruction,
           url: `${publicBaseUrl}/api/images/${imageIdForMedia}/media`,
-          metadata: { provider: result.provider, model: result.model, providerUrl: result.url, storageKey: saved.storageKey, storageSize: saved.size, generationId: key || null, mediaType: "image", operation, sourceImageId: source.id },
+          metadata: { provider: result.provider, model: result.model, providerUrl: result.url, storageProvider: saved.provider, storageBucket: saved.bucket, storageKey: saved.storageKey, localStorageKey: saved.localStorageKey, storageSize: saved.size, storageMimeType: saved.mimeType, ownerUserId: userId, generationId, mediaType: "image", operation, sourceImageId: source.id },
           userId, projectId: source.projectId || null,
         }));
       }

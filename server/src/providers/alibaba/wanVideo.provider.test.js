@@ -90,6 +90,32 @@ test("primary Wan 2.6 Flash succeeds without trying a fallback", async (t) => {
   assert.equal(started.length, 1);
 });
 
+test("async submission returns the provider task ID without polling for completion", async (t) => {
+  const calls = setup(t, { VIDEO_ALIBABA_MODEL_CHAIN: "wan2.6-i2v-flash" });
+  const result = await provider.generateVideo({ ...baseRequest, awaitCompletion: false });
+  assert.equal(calls.length, 1);
+  assert.equal(result.taskId, "task-1");
+  assert.equal(result.status, "PENDING");
+});
+
+test("failure to persist an accepted task ID never triggers provider fallback", async (t) => {
+  const calls = setup(t, { VIDEO_ALIBABA_MODEL_CHAIN: "wan2.6-i2v-flash,wan2.7-i2v", VIDEO_ALIBABA_FALLBACK_ENABLED: "true" });
+  await assert.rejects(
+    provider.generateVideo({ ...baseRequest, awaitCompletion: false, onStarted: async () => { throw new Error("database unavailable"); } }),
+    (error) => error.taskId === "task-1" && error.classification === "TASK_STILL_RUNNING" && error.providerCode === "TASK_ID_PERSISTENCE_FAILED",
+  );
+  assert.equal(calls.length, 1);
+});
+
+test("task status query returns the documented provider state and successful result", async (t) => {
+  setup(t, { VIDEO_ALIBABA_MODEL_CHAIN: "wan2.6-i2v-flash" });
+  const submitted = await provider.generateVideo({ ...baseRequest, awaitCompletion: false });
+  const status = await provider.getVideoTaskStatus(submitted.taskId, submitted.model);
+  assert.equal(status.taskId, "task-1");
+  assert.equal(status.status, "SUCCEEDED");
+  assert.equal(status.result.url, "https://video.example/wan2.6-i2v-flash.mp4");
+});
+
 test("Wan 2.7 reference mode sends guidance as reference_image, never as first_frame", async (t) => {
   const calls = setup(t, { VIDEO_ALIBABA_REFERENCE_MODEL_CHAIN: "wan2.7-r2v" });
   const result = await provider.generateVideo({
@@ -132,6 +158,25 @@ test("manual model selection rejects models outside the configured provider chai
   const calls = setup(t, { VIDEO_ALIBABA_MODEL_CHAIN: "wan2.6-i2v-flash" });
   await assert.rejects(provider.generateVideo({ ...baseRequest, requestedModel: "wan2.7-i2v" }), /not in the configured Alibaba model chain/);
   assert.equal(calls.length, 0);
+});
+
+test("explicit I2V selection rejects reference-to-video instead of switching to R2V", async (t) => {
+  const calls = setup(t, {
+    VIDEO_ALIBABA_MODEL_CHAIN: "wan2.6-i2v-flash",
+    VIDEO_ALIBABA_REFERENCE_MODEL_CHAIN: "wan2.7-r2v",
+  });
+  await assert.rejects(provider.generateVideo({
+    ...baseRequest,
+    frameMode: "reference",
+    referenceImageUrls: [IMAGE],
+    requestedModel: "wan2.6-i2v-flash",
+  }), /does not support this reference mode/);
+  assert.equal(calls.length, 0);
+});
+
+test("timeout errors identify an uncertain running task and are not retryable", async () => {
+  const error = { providerCode: "TaskTimeout", message: "Alibaba video generation timed out" };
+  assert.equal(provider.classifyAlibabaVideoError(error), "TASK_STILL_RUNNING");
 });
 
 test("confirmed free quota exhaustion advances to Wan 2.7 with its media protocol", async (t) => {

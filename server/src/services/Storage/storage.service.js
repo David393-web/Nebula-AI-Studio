@@ -5,12 +5,13 @@ const { Readable, Transform } = require("stream");
 const { pipeline } = require("stream/promises");
 const getMediaStorageRoot = require("../../utils/mediaStorageRoot");
 const retryTransient = require("../../utils/retryTransient");
+const supabaseStorage = require("../../providers/storage/supabase.provider");
 
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 
 class StorageService {
-  async saveRemoteImage(imageUrl) {
-    return retryTransient(async () => {
+  async saveRemoteImage(imageUrl, { userId, generationId } = {}) {
+    const local = await retryTransient(async () => {
     const response = await fetch(imageUrl, { signal: AbortSignal.timeout(60000) });
 
     if (!response.ok || !response.body) {
@@ -41,7 +42,8 @@ class StorageService {
       throw new Error("Generated image exceeds the 20 MB storage limit.");
     }
 
-    const directory = path.join(getMediaStorageRoot(), "private", "images");
+    const ownerPart = userId && /^[a-zA-Z0-9_-]+$/.test(String(userId)) ? ["users", String(userId)] : [];
+    const directory = path.join(getMediaStorageRoot(), "private", ...ownerPart, "images");
     const fileName = `${randomUUID()}.${extension}`;
     const filePath = path.join(directory, fileName);
     let bytesWritten = 0;
@@ -72,12 +74,30 @@ class StorageService {
       throw error;
     }
 
+    return { filePath, fileName, size: bytesWritten, contentType };
+    });
+    const localStorageKey = path.relative(getMediaStorageRoot(), local.filePath).split(path.sep).join("/");
+    if (supabaseStorage.isConfigured()) {
+      const objectGenerationId = /^[a-zA-Z0-9_-]{1,120}$/.test(String(generationId || "")) ? generationId : randomUUID();
+      const uploaded = await supabaseStorage.uploadFile({
+        filePath: local.filePath,
+        objectPath: `users/${userId}/images/${objectGenerationId}/${local.fileName}`,
+        bucket: supabaseStorage.getBucket(),
+        contentType: local.contentType,
+        userId,
+        generationId,
+      });
+      return { ...uploaded, storageKey: uploaded.objectPath, localStorageKey };
+    }
     return {
       path: null,
-      size: bytesWritten,
-      storageKey: `private/images/${fileName}`,
+      size: local.size,
+      storageKey: localStorageKey,
+      localStorageKey,
+      provider: "local",
+      bucket: null,
+      mimeType: local.contentType,
     };
-    });
   }
 
   getFileInfo(file) {

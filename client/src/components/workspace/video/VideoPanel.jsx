@@ -16,6 +16,7 @@ import VideoSettings from "./VideoSettings";
 import VideoPreview from "./VideoPreview";
 
 import api from "@/services/api";
+import { getPendingVideoGenerations, savePendingVideoGeneration, waitForVideoGeneration } from "@/utils/videoGenerationPolling";
 import { buildVisualScenePrompt, getSceneCharacters, normalizeSceneScript } from "@/utils/sceneScript";
 
 function prettyModelName(model) {
@@ -46,6 +47,7 @@ export default function VideoPanel({
   const [generationError, setGenerationError] = useState("");
   const [sceneStatuses, setSceneStatuses] = useState({});
   const [providerStatus, setProviderStatus] = useState(null);
+  const [uncertainGenerationId, setUncertainGenerationId] = useState(null);
 
   useEffect(() => {
     const durations = Array.from(new Set([duration, ...scenes.map((scene) => scene.durationSeconds || duration)].map((value) => Math.min(15, Math.max(2, Number(value) || 5)))));
@@ -54,6 +56,36 @@ export default function VideoPanel({
       return [seconds, data?.data?.costs || null];
     })).then((rows) => setVideoCosts(Object.fromEntries(rows))).catch(() => {});
   }, [duration, scenes]);
+
+  useEffect(() => {
+    if (!projectId) return undefined;
+    let active = true;
+    const recover = async () => {
+      for (const generationId of getPendingVideoGenerations()) {
+        if (!active) return;
+        const abort = new AbortController();
+        try {
+          const video = await waitForVideoGeneration(api, generationId, (status) => {
+            if (status.projectId !== projectId) abort.abort();
+            else {
+              setProviderStatus(status);
+              if (["checking_submission", "submission_unknown", "expired", "uncertain"].includes(status.state)) setUncertainGenerationId(status.generationId);
+              else setUncertainGenerationId((current) => current === status.generationId ? null : current);
+            }
+          }, { signal: abort.signal });
+          if (!active || video.projectId !== projectId) continue;
+          const recovered = { ...video, type: "video", projectId, sceneId: video.metadata?.sceneId || null };
+          setGeneratedVideos((current) => [recovered, ...current.filter((item) => item.id !== recovered.id)]);
+          onGenerateVideo?.(recovered);
+        } catch (error) {
+          if (active && error.message !== "Status checking was paused.") setGenerationError(error.message || "A saved video task still needs status checking.");
+        }
+      }
+      if (active) setProviderStatus(null);
+    };
+    void recover();
+    return () => { active = false; };
+  }, [projectId]);
 
   /*
    * --------------------------------
@@ -207,21 +239,9 @@ export default function VideoPanel({
       setSceneProgress({ current: index + 1, total: scenesToRender.length, title: sourceScene.title || sourceScene.name || "Scene " + (index + 1) });
       setSceneStatuses((current) => ({ ...current, [sourceScene.id]: "Generating" }));
       const generationId = crypto.randomUUID();
-      let pollingStatus = true;
-      let statusTimer = null;
-      const pollProviderStatus = async () => {
-        try {
-          const response = await api.get(`/generation/video/status/${encodeURIComponent(generationId)}`);
-          if (pollingStatus && response.data?.data) setProviderStatus(response.data.data);
-        } catch {
-          // The generation request may not have reached its provider preflight yet.
-        } finally {
-          if (pollingStatus) statusTimer = window.setTimeout(pollProviderStatus, 900);
-        }
-      };
-      void pollProviderStatus();
+      savePendingVideoGeneration(generationId);
       try {
-        const response = await api.post("/generation/video", {
+        try { await api.post("/generation/video", {
           projectId,
           sceneId: sourceScene.id || null,
           imageId: sourceScene.imageId || (sourceScene.generatedType === "image" ? sourceScene.generatedId : null),
@@ -235,8 +255,13 @@ export default function VideoPanel({
           characterIds: sceneCharacters.map((character) => character.id).filter(Boolean),
           sceneScript: sourceScene.sceneScript || sourceScene.metadata?.sceneScript || { version: 1, blocks: [] },
           generationSource: "storyboard",
-        }, { timeout: 360000, headers: { "Idempotency-Key": generationId } });
-        const data = response.data?.data || response.data || null;
+        }, { timeout: 45000, headers: { "Idempotency-Key": generationId } }); }
+        catch (submissionError) { if (submissionError.response) throw submissionError; }
+        const data = await waitForVideoGeneration(api, generationId, (status) => {
+          setProviderStatus(status);
+          if (["checking_submission", "submission_unknown", "expired", "uncertain"].includes(status.state)) setUncertainGenerationId(status.generationId);
+          else setUncertainGenerationId((current) => current === status.generationId ? null : current);
+        });
         if (!data?.url) throw new Error("The provider returned no video for this scene.");
         const result = { ...data, id: data.id || null, type: "video", url: data.url, projectId, sceneId: data.sceneId || sourceScene.id || null, quality, duration: Number(data.duration) || sceneDuration, createdAt: data.createdAt || new Date().toISOString(), sceneTitle: sourceScene.title || sourceScene.name || "Scene " + (index + 1) };
         setGeneratedVideos((current) => [result, ...current.filter((item) => item.sceneId !== result.sceneId)]);
@@ -262,8 +287,6 @@ export default function VideoPanel({
         failed.push(`${sourceScene.title || sourceScene.name || "Scene " + (index + 1)}: ${message}`);
         setSceneStatuses((current) => ({ ...current, [sourceScene.id]: "Failed" }));
       } finally {
-        pollingStatus = false;
-        if (statusTimer) window.clearTimeout(statusTimer);
         setProviderStatus(null);
       }
     }
@@ -550,7 +573,7 @@ export default function VideoPanel({
           <button
             type="button"
             onClick={handleGenerateVideo}
-            disabled={!canGenerate}
+            disabled={!canGenerate || Boolean(uncertainGenerationId)}
             className="flex items-center justify-center w-full gap-2 px-5 py-3.5 mt-4 text-sm font-medium text-white transition bg-purple-600 rounded-xl hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Sparkles size={17} />
@@ -565,6 +588,7 @@ export default function VideoPanel({
               : providerStatus?.model
                 ? `Generating with ${prettyModelName(providerStatus.model)}…`
                 : "Preparing Alibaba video generation…"} · Scene {sceneProgress.current} of {sceneProgress.total}: {sceneProgress.title}</p>}
+          {uncertainGenerationId && <p role="alert" className="mt-2 text-xs text-amber-300">Video task {uncertainGenerationId} has uncertain provider acceptance. Check its saved status before submitting another storyboard batch; no duplicate task was started.</p>}
           {videoCosts && <p className="mt-2 text-xs text-zinc-500">Estimated queue cost: {generatedScenes.reduce((total, scene) => { const sceneDuration = Math.min(15, Math.max(2, Number(scene.durationSeconds) || Number(duration) || 5)); const costs = videoCosts[sceneDuration] || {}; return total + ((scene.audioMode === "silent" || (scene.audioMode === "inherit" && !audioEnabled)) ? costs.videoSilent || 0 : costs.videoAudio || 0); }, 0)} credits</p>}
 
           {!projectId && (

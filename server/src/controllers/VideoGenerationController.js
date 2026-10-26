@@ -8,10 +8,15 @@ const storyboardService = require("../services/Storyboard/storyboard.service");
 const characterService = require("../services/Character/character.service");
 const videoGenerationStatusService = require("../services/Generation/videoGenerationStatus.service");
 const { getModelRegistry } = require("../services/Generation/modelRegistry");
-const { randomUUID } = require("crypto");
 const providerImageInput = require("../utils/providerImageInput");
+const publicMediaMetadata = require("../utils/publicMediaMetadata");
 
 const NO_VISIBLE_TEXT_INSTRUCTION = "No visible text, captions, subtitles, character labels, dialogue text, typography, UI, logos or written words in the generated scene. Character names are metadata only and must never appear in the video.";
+
+function publicVideo(video) {
+  if (!video) return null;
+  return { ...video, metadata: publicMediaMetadata(video.metadata) };
+}
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -37,6 +42,34 @@ function sanitizeVisualPrompt(value, characterNames = []) {
 }
 
 class VideoGenerationController {
+  async finalizeTask(video, taskResult, req) {
+    const metadata = video.metadata || {};
+    const storedVideo = await videoStorageService.saveFromUrl(taskResult.url, {
+      userId: video.userId,
+      generationId: metadata.generationId,
+    });
+    if (storedVideo.provider !== "supabase") {
+      throw new Error("Video storage did not confirm a durable Supabase upload.");
+    }
+    const updated = await videoService.updateVideo(video.id, video.userId, {
+      duration: Math.round(Number(taskResult.duration) || Number(metadata.requestedDuration) || 0),
+      metadata: {
+        ...metadata,
+        state: "completed",
+        completedAt: new Date().toISOString(),
+        storageProvider: storedVideo.provider,
+        storageBucket: storedVideo.bucket,
+        storageKey: storedVideo.storageKey,
+        localStorageKey: storedVideo.localStorageKey,
+        storageSize: storedVideo.size,
+        storageMimeType: storedVideo.mimeType,
+        actualResolution: taskResult.resolution || metadata.requestedResolution,
+        providerRequestId: taskResult.requestId || metadata.providerRequestId || null,
+      },
+    });
+    return updated;
+  }
+
   async generate(req, res) {
     let chargedCredits = 0;
     let chargeCompleted = false;
@@ -50,6 +83,24 @@ class VideoGenerationController {
           success: false,
           message: "Authenticated user could not be identified.",
         });
+      }
+
+      if (!idempotencyKey || !/^[A-Za-z0-9_-]{1,120}$/.test(idempotencyKey)) {
+        return res.status(400).json({ success: false, message: "A valid Idempotency-Key header is required." });
+      }
+      const existingGeneration = await videoService.getGeneration(idempotencyKey, userId);
+      if (existingGeneration) {
+        const state = existingGeneration.metadata?.state || "submission_unknown";
+        return res.status(202).json({ success: true, message: "This generation request already exists.", data: {
+          generationId: idempotencyKey,
+          videoId: existingGeneration.id,
+          taskId: existingGeneration.metadata?.taskId || null,
+          model: existingGeneration.metadata?.model || null,
+          state,
+          sceneId: existingGeneration.metadata?.sceneId || null,
+          projectId: existingGeneration.metadata?.projectId || null,
+          video: state === "completed" ? publicVideo(existingGeneration) : null,
+        } });
       }
 
       const { imageUrl, imageId, prompt, duration, quality, sceneId, projectId, audio, audioPrompt, sceneScript, characterIds: requestedCharacterIds, referenceImageIds = [], generationSource, modelId, frameMode = "reference" } =
@@ -83,6 +134,10 @@ class VideoGenerationController {
         if (!selected || selected.availability !== "configured") return res.status(400).json({ success: false, message: "The selected video model is unavailable. Choose Auto or another configured model." });
         requestedModel = selected.apiModelId;
         if (withAudio && !selected.audio) return res.status(400).json({ success: false, message: "The selected video model does not support generated audio." });
+        if (frameMode === "reference" && !selected.characterConsistency) return res.status(400).json({ success: false, message: "The selected model supports first-frame image-to-video only. Switch to explicit first-frame mode or choose a reference-to-video model." });
+        if (!selected.characterConsistency && ((Array.isArray(referenceImageIds) && referenceImageIds.length > 0) || (Array.isArray(requestedCharacterIds) && requestedCharacterIds.length > 0))) {
+          return res.status(400).json({ success: false, message: "The selected model does not accept additional identity reference images. Remove those references or choose a reference-to-video model." });
+        }
       }
       let providerPrompt = "";
       const referenceImageUrls = [];
@@ -149,10 +204,57 @@ class VideoGenerationController {
         providerPrompt += "\n\nStart from the explicitly selected first frame. Use the additional reference images only to preserve subject identity and visual details."
       }
 
+      if (!videoStorageService.isDurableConfigured()) {
+        return res.status(503).json({ success: false, message: "Persistent video storage is not configured. Please contact the workspace administrator." });
+      }
       const requestedDuration = Math.min(15, Math.max(2, Math.round(Number(duration) || 5)));
       chargedCredits = creditsService.creditCost(withAudio ? "videoAudio" : "videoSilent", requestedDuration);
       await creditsService.preflight(userId, chargedCredits, idempotencyKey);
-      videoGenerationStatusService.update(userId, idempotencyKey, { state: "starting" });
+      const generationId = idempotencyKey;
+      const videoId = idempotencyKey;
+      const publicBaseUrl = (process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get("host")}`).replace(/\/$/, "");
+      let pendingVideo;
+      try {
+        pendingVideo = await videoService.createVideo({
+          id: videoId,
+          name: `Generating video ${new Date().toISOString()}`,
+          prompt: providerPrompt,
+          url: `${publicBaseUrl}/api/videos/${videoId}/media`,
+          duration: requestedDuration,
+          metadata: {
+            state: "submitting",
+            generationId,
+            model: requestedModel || null,
+            selectedModel: requestedModel || null,
+            requestedModel: requestedModel || null,
+            provider: "alibaba",
+            requestedDuration,
+            requestedResolution: quality === "1080P" ? "1080P" : "720P",
+            audioRequested: withAudio,
+            sceneId: sceneId || null,
+            frameMode,
+            generationSource: generationSource || (sceneId ? "storyboard" : "independent"),
+            characterIds: Array.isArray(requestedCharacterIds) ? requestedCharacterIds : [],
+            sceneScript: validatedScene?.metadata?.sceneScript || null,
+            projectId: projectId || null,
+            audioPrompt: audioPrompt?.trim() || null,
+            nextPollAt: null,
+            pollAttempts: 0,
+            submittedAt: new Date().toISOString(),
+          },
+          projectId: projectId || null,
+          userId,
+        });
+      } catch (createError) {
+        const duplicate = await videoService.getGeneration(generationId, userId);
+        if (duplicate) return res.status(202).json({ success: true, data: { generationId, videoId: duplicate.id, taskId: duplicate.metadata?.taskId || null, state: duplicate.metadata?.state || "submission_unknown" } });
+        throw createError;
+      }
+      await creditsService.charge(userId, chargedCredits, idempotencyKey, `Alibaba video (${requestedDuration}s)`, generationId);
+      chargeCompleted = true;
+      pendingVideo = await videoService.updateVideo(videoId, userId, {
+        metadata: { ...pendingVideo.metadata, state: "submitting", chargedCredits },
+      });
 
       const result = await videoGenerationService.generate({
         userId,
@@ -164,89 +266,88 @@ class VideoGenerationController {
         quality,
         audio: withAudio,
         requestedModel,
-        generationId: idempotencyKey,
+        generationId,
+        awaitCompletion: false,
         onProgress: async (progress) => videoGenerationStatusService.update(userId, idempotencyKey, progress),
         onStarted: async ({ taskId, model }) => {
-          if (chargeCompleted) return;
-          await creditsService.charge(userId, chargedCredits, idempotencyKey, `${model} ${withAudio ? "audio requested" : "silent"} video (${requestedDuration}s)`, taskId);
-          chargeCompleted = true;
+          const current = await videoService.getVideo(videoId, userId);
+          await videoService.updateVideo(videoId, userId, {
+            metadata: {
+              ...current.metadata,
+              state: "pending",
+              taskId,
+              model,
+              selectedModel: model,
+              providerRequestId: null,
+              nextPollAt: new Date(Date.now() + 15_000).toISOString(),
+              acceptedAt: new Date().toISOString(),
+            },
+          });
         },
       });
-
-      const storedVideo = await videoStorageService.saveFromUrl(result.url);
-      const publicBaseUrl = (
-        process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get("host")}`
-      ).replace(/\/$/, "");
-      const videoId = randomUUID();
-      const video = await videoService.createVideo({
-        id: videoId,
-        name: `AI video ${new Date().toISOString()}`,
-        prompt: providerPrompt,
-        url: `${publicBaseUrl}/api/videos/${videoId}/media`,
-        duration: Math.round(Number(result.duration) || 0),
-        metadata: {
-          provider: result.provider,
-          model: result.model,
-          providerUrl: result.url,
-          storageKey: storedVideo.storageKey,
-          storageSize: storedVideo.size,
-          generationId: idempotencyKey || null,
-          mediaType: "video",
-          taskId: result.taskId,
-          requestId: result.requestId,
-          sceneId: sceneId || null,
-          audio: result.audioGenerated,
-          audioRequested: result.audioRequested,
-          audioGenerated: result.audioGenerated,
-          requestedDuration: result.requestedDuration,
-          requestedResolution: result.requestedResolution,
-          actualResolution: result.actualResolution,
-          attemptedModels: result.attemptedModels,
-          selectedModel: result.selectedModel,
-          fallbackUsed: result.fallbackUsed,
-          skippedModels: result.skippedModels,
-          audioPrompt: audioPrompt?.trim() || null,
-          generationSource: generationSource || (sceneId ? "storyboard" : "independent"),
-          frameMode,
-          characterIds: Array.isArray(requestedCharacterIds) ? requestedCharacterIds : [],
-          sceneScript: validatedScene?.metadata?.sceneScript || null,
-        },
-        projectId: projectId || null,
-        userId,
-      });
-
-      videoGenerationStatusService.update(userId, idempotencyKey, {
-        state: "completed",
+      const accepted = await videoService.getVideo(videoId, userId);
+      const acceptedMetadata = {
+        ...accepted.metadata,
+        state: "pending",
+        taskId: result.taskId,
         model: result.model,
+        selectedModel: result.selectedModel,
+        providerRequestId: result.requestId || null,
+        attemptedModels: result.attemptedModels,
+        skippedModels: result.skippedModels,
         fallbackUsed: result.fallbackUsed,
         audioRequested: result.audioRequested,
         audioGenerated: result.audioGenerated,
-      });
-
-      return res.status(200).json({
+        nextPollAt: new Date(Date.now() + 15_000).toISOString(),
+        acceptedAt: new Date().toISOString(),
+      };
+      await videoService.updateVideo(videoId, userId, { metadata: acceptedMetadata });
+      videoGenerationStatusService.update(userId, generationId, { state: "pending", model: result.model, taskId: result.taskId });
+      return res.status(202).json({
         success: true,
-        message: "Video generated successfully.",
+        message: "Video task accepted. Check its status while Alibaba generates the video.",
         data: {
-          ...result,
-          ...video,
-          sceneId: sceneId || null,
-          projectId: projectId || null,
-          audio: result.audioGenerated,
-          audioRequested: result.audioRequested,
-          audioGenerated: result.audioGenerated,
-          requestedDuration: result.requestedDuration,
-          requestedResolution: result.requestedResolution,
-          actualResolution: result.actualResolution,
-          attemptedModels: result.attemptedModels,
-          selectedModel: result.selectedModel,
-          fallbackUsed: result.fallbackUsed,
-          skippedModels: result.skippedModels,
-          audioPrompt: audioPrompt?.trim() || null,
+          generationId,
+          videoId,
+          taskId: result.taskId,
+          model: result.model,
+          state: "pending",
         },
       });
     } catch (error) {
-      videoGenerationStatusService.update(userId, idempotencyKey, { state: "failed" });
-      if (chargeCompleted && chargedCredits && userId && idempotencyKey) {
+      const providerTaskMayStillRun = error?.classification === "TASK_STILL_RUNNING"
+        || error?.providerCode === "TaskTimeout"
+        || (chargeCompleted && (Number(error?.providerStatus) >= 500 || !error?.providerStatus));
+      let persisted = null;
+      if (userId && idempotencyKey) {
+        persisted = await videoService.getGeneration(idempotencyKey, userId).catch(() => null);
+        if (persisted) {
+          const state = providerTaskMayStillRun ? (persisted.metadata?.taskId || error?.taskId ? "uncertain" : "submission_unknown") : "failed";
+          await videoService.updateVideo(persisted.id, userId, {
+            metadata: {
+              ...persisted.metadata,
+              state,
+              providerCode: error?.providerCode || null,
+              providerStatus: error?.providerStatus || null,
+              taskId: error?.taskId || persisted.metadata?.taskId || null,
+              model: error?.model || persisted.metadata?.model || null,
+              providerRequestId: error?.requestId || persisted.metadata?.providerRequestId || null,
+              providerMessage: providerTaskMayStillRun
+                ? error?.providerCode === "TASK_ID_PERSISTENCE_FAILED"
+                  ? "Alibaba accepted this task, but the server could not confirm its task ID in storage. Do not resubmit; check status again or contact support with this generation ID."
+                  : "Provider acceptance is uncertain. Check this generation status; do not submit it again."
+                : error?.quotaExhausted ? error.message : "Video generation failed. Please try again.",
+              nextPollAt: persisted.metadata?.taskId ? new Date(Date.now() + 30_000).toISOString() : null,
+            },
+          }).catch(() => {});
+        }
+      }
+      videoGenerationStatusService.update(userId, idempotencyKey, {
+        state: providerTaskMayStillRun ? (persisted?.metadata?.taskId ? "uncertain" : "submission_unknown") : "failed",
+        model: error?.model || null,
+        taskId: error?.taskId || null,
+      });
+      if (!providerTaskMayStillRun && chargeCompleted && chargedCredits && userId && idempotencyKey) {
         try { await creditsService.refund(userId, chargedCredits, idempotencyKey, "Video generation failed"); }
         catch (refundError) { console.error("Video generation refund failed", { code: refundError?.code || "INTERNAL_ERROR" }); }
       }
@@ -262,32 +363,122 @@ class VideoGenerationController {
         skippedModels: error?.skippedModels || null,
       });
 
-      const httpStatus = error?.status || (Number(error?.providerStatus) >= 400 ? error.providerStatus : 500);
+      const httpStatus = providerTaskMayStillRun ? 202 : error?.status || (Number(error?.providerStatus) >= 400 ? error.providerStatus : 500);
       return res.status(httpStatus).json({
-        success: false,
-        message: error?.quotaExhausted
+        success: providerTaskMayStillRun,
+        message: providerTaskMayStillRun
+          ? "Alibaba has not confirmed whether this video task finished. Your request may still be processing; check generation status before retrying to avoid duplicate charges."
+          : error?.quotaExhausted
           ? error.message || "The video provider reports that its quota is exhausted."
           : error?.provider
             ? error.message || "The video provider rejected the request."
             : error?.status && error.status < 500
               ? error.message
               : "Video generation failed. Please try again later.",
+        ...(providerTaskMayStillRun ? { data: {
+          generationId: idempotencyKey,
+          videoId: persisted?.id || null,
+          taskId: persisted?.metadata?.taskId || error?.taskId || null,
+          model: persisted?.metadata?.model || error?.model || null,
+          state: persisted?.metadata?.state || "submission_unknown",
+        } } : {}),
         ...(error?.provider ? {
           provider: error.provider,
           providerStatus: error.providerStatus || null,
           providerCode: error.providerCode || null,
           requestId: error.requestId || null,
+          taskId: error.taskId || null,
           model: error.model || "wan2.6-i2v-flash",
         } : {}),
       });
     }
   }
 
-  getStatus(req, res) {
+  async getStatus(req, res) {
     const userId = req.user?.id || req.user?.userId;
-    const status = videoGenerationStatusService.get(userId, req.params.requestId);
-    if (!status) return res.status(404).json({ success: false, message: "Generation status was not found." });
-    return res.status(200).json({ success: true, data: status });
+    const generationId = req.params.requestId;
+    const video = await videoService.getGeneration(generationId, userId);
+    if (!video) return res.status(404).json({ success: false, message: "Generation status was not found." });
+    const terminal = new Set(["completed", "failed", "expired", "submission_unknown"]);
+    let metadata = video.metadata || {};
+    const acceptedAt = Date.parse(metadata.acceptedAt || "");
+    if (metadata.taskId && Number.isFinite(acceptedAt) && Date.now() - acceptedAt >= 24 * 60 * 60 * 1000 && !terminal.has(metadata.state)) {
+      await creditsService.refund(userId, Number(metadata.chargedCredits) || 0, generationId, "Alibaba video task expired before media delivery");
+      metadata = { ...metadata, state: "expired", nextPollAt: null, providerMessage: "Alibaba's 24-hour task record expired before a result could be recovered. No automatic resubmission was made." };
+      await videoService.updateVideo(video.id, userId, { metadata });
+    }
+    if (metadata.state === "submitting") {
+      const submittedAt = Date.parse(metadata.submittedAt || video.createdAt);
+      if (!metadata.taskId && Date.now() - submittedAt > 30_000) {
+        const wasCharged = await creditsService.hasCharge(generationId);
+        metadata = wasCharged
+          ? { ...metadata, state: "submission_unknown", providerMessage: "The server restarted while provider acceptance was being confirmed. Do not submit again; contact support with this generation ID." }
+          : { ...metadata, state: "failed", providerMessage: "The server stopped before charging or submitting this video. No provider task was created; you can safely start a new request." };
+        await videoService.updateVideo(video.id, userId, { metadata });
+      }
+    }
+    if (!terminal.has(metadata.state) && metadata.taskId && ["pending", "running", "uncertain", "checking", "finalization_retry", "finalizing"].includes(metadata.state)) {
+      const nextPollAt = Date.parse(metadata.nextPollAt || "");
+      if (!Number.isFinite(nextPollAt) || Date.now() >= nextPollAt) {
+        const claimed = await videoService.claimGenerationPoll(video, {
+          ...metadata,
+          state: metadata.state === "finalization_retry" ? "finalization_retry" : "checking",
+          pollLeaseUntil: new Date(Date.now() + 20_000).toISOString(),
+          nextPollAt: new Date(Date.now() + 20_000).toISOString(),
+        });
+        if (claimed) {
+          try {
+            const checked = await videoGenerationService.getTaskStatus(metadata.taskId, metadata.model);
+            metadata = { ...(await videoService.getVideo(video.id, userId)).metadata };
+            const attempts = (Number(metadata.pollAttempts) || 0) + 1;
+            if (checked.status === "SUCCEEDED" && checked.result?.url) {
+              metadata = { ...metadata, state: "finalizing", pollAttempts: attempts, nextPollAt: new Date(Date.now() + 5 * 60_000).toISOString(), providerMessage: "Alibaba completed the video. Saving it to your private media library." };
+              await videoService.updateVideo(video.id, userId, { metadata });
+              void this.finalizeTask(video, checked.result).catch(async () => {
+                const latestVideo = await videoService.getVideo(video.id, userId).catch(() => null);
+                if (!latestVideo || latestVideo.metadata?.state !== "finalizing") return;
+                await videoService.updateVideo(video.id, userId, {
+                  metadata: { ...latestVideo.metadata, state: "finalization_retry", nextPollAt: new Date(Date.now() + 30_000).toISOString(), providerMessage: "The video is ready; saving it to private storage will be retried automatically." },
+                }).catch(() => {});
+              });
+            } else if (["FAILED", "CANCELED"].includes(checked.status)) {
+              await creditsService.refund(userId, Number(metadata.chargedCredits) || 0, generationId, "Alibaba video task failed");
+              metadata = { ...metadata, state: "failed", providerCode: checked.code, providerMessage: "Alibaba could not complete this video. Credits were returned; you can safely submit a new request.", terminalAt: new Date().toISOString() };
+              await videoService.updateVideo(video.id, userId, { metadata });
+            } else if (checked.status === "UNKNOWN") {
+              const age = Date.now() - Date.parse(metadata.acceptedAt || metadata.submittedAt || video.createdAt);
+              const expired = age >= 24 * 60 * 60 * 1000;
+              if (expired) await creditsService.refund(userId, Number(metadata.chargedCredits) || 0, generationId, "Alibaba video task expired before media delivery");
+              metadata = { ...metadata, state: expired ? "expired" : "uncertain", pollAttempts: attempts, nextPollAt: expired ? null : new Date(Date.now() + 60_000).toISOString(), providerMessage: expired ? "Alibaba's 24-hour task record expired before a result could be recovered. No automatic resubmission was made." : "Alibaba has not returned this task. It may still be processing; do not resubmit while its status is uncertain." };
+              await videoService.updateVideo(video.id, userId, { metadata });
+            } else {
+              metadata = { ...metadata, state: checked.status === "RUNNING" ? "running" : "pending", pollAttempts: attempts, nextPollAt: new Date(Date.now() + 15_000).toISOString(), providerRequestId: checked.requestId || metadata.providerRequestId };
+              await videoService.updateVideo(video.id, userId, { metadata });
+            }
+          } catch (pollError) {
+            const backoff = pollError?.providerStatus === 429 ? 60_000 : 30_000;
+            metadata = { ...metadata, state: "uncertain", nextPollAt: new Date(Date.now() + backoff).toISOString(), lastPollErrorCode: pollError?.providerCode || "NETWORK_ERROR", providerMessage: "Alibaba status could not be checked right now. This request will remain available for another status check; do not resubmit." };
+            await videoService.updateVideo(video.id, userId, { metadata }).catch(() => {});
+          }
+        }
+      }
+    }
+    const latest = await videoService.getVideo(video.id, userId);
+    metadata = latest.metadata || {};
+    const videoData = metadata.state === "completed" ? latest : null;
+    const message = metadata.providerMessage || (metadata.state === "completed" ? "Video generation completed." : ["failed", "expired"].includes(metadata.state) ? "Video generation did not complete." : "Alibaba is generating your video. Check again shortly.");
+    return res.status(200).json({ success: true, data: {
+      generationId,
+      videoId: latest.id,
+      taskId: metadata.taskId || null,
+      model: metadata.model || null,
+      state: metadata.state || "submission_unknown",
+      sceneId: metadata.sceneId || null,
+      projectId: metadata.projectId || null,
+      nextPollAt: metadata.nextPollAt || null,
+      message,
+      video: publicVideo(videoData),
+    } });
   }
 }
 

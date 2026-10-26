@@ -18,6 +18,9 @@ test("model registry reports configured providers and verified capabilities", ()
   const plus = models.find((model) => model.apiModelId === "wan2.2-i2v-plus");
   assert.equal(flash.audio, true);
   assert.equal(flash.audioMode, "toggle");
+  assert.equal(flash.referenceImages, false);
+  assert.equal(flash.maxReferenceImages, 0);
+  assert.deepEqual(flash.capabilities, ["First frame", "Audio"]);
   assert.deepEqual(flash.duration, { min: 2, max: 15 });
   assert.equal(plus.audio, false);
   assert.equal(plus.negativePrompt, false);

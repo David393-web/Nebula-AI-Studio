@@ -1,6 +1,7 @@
 const videoService = require("../services/Video/video.service");
 const downloadLocalMedia = require("../utils/downloadLocalMedia");
 const sendStoredMedia = require("../utils/sendStoredMedia");
+const publicMediaMetadata = require("../utils/publicMediaMetadata");
 
 const {
   validateVideoCreate,
@@ -38,7 +39,7 @@ class VideoController {
         url,
         thumbnailUrl,
         duration,
-        metadata,
+        metadata: publicMediaMetadata(metadata),
         projectId,
         isFavorite,
         userId: req.user.userId,
@@ -66,7 +67,7 @@ class VideoController {
       return res.status(200).json({
         success: true,
         data: {
-          videos,
+          videos: videos.map((video) => ({ ...video, metadata: publicMediaMetadata(video.metadata) })),
         },
       });
     } catch (error) {
@@ -85,7 +86,7 @@ class VideoController {
       return res.status(200).json({
         success: true,
         data: {
-          videos,
+          videos: videos.map((video) => ({ ...video, metadata: publicMediaMetadata(video.metadata) })),
         },
       });
     } catch (error) {
@@ -104,7 +105,7 @@ class VideoController {
       return res.status(200).json({
         success: true,
         data: {
-          video,
+          video: { ...video, metadata: publicMediaMetadata(video.metadata) },
         },
       });
     } catch (error) {
@@ -115,14 +116,14 @@ class VideoController {
   async download(req, res, next) {
     try {
       const video = await videoService.getVideo(req.params.id, req.user.userId);
-      return downloadLocalMedia(res, video, "nebula-video");
+      return await downloadLocalMedia(res, video, "nebula-video");
     } catch (error) { next(error); }
   }
 
   async media(req, res, next) {
     try {
       const video = await videoService.getVideo(req.params.id, req.user.userId);
-      return sendStoredMedia(res, video, "nebula-video");
+      return await sendStoredMedia(res, video, "nebula-video");
     } catch (error) { next(error); }
   }
 
@@ -144,7 +145,7 @@ class VideoController {
       const video = await videoService.updateVideo(
         req.params.id,
         req.user.userId,
-        req.body
+        { ...req.body, ...(req.body.metadata !== undefined ? { metadata: publicMediaMetadata(req.body.metadata) } : {}) }
       );
 
       return res.status(200).json({

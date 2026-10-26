@@ -45,6 +45,12 @@ async function preflight(userId, credits, idempotencyKey) {
   if ((account?.balance || 0) < credits) { const error = new Error("Insufficient credits."); error.status = 402; throw error; }
 }
 
+async function hasCharge(idempotencyKey) {
+  if (!idempotencyKey) return false;
+  const existing = await prisma.creditTransaction.findUnique({ where: { idempotencyKey } });
+  return Boolean(existing && existing.type === "GENERATION");
+}
+
 async function refund(userId, credits, idempotencyKey, reason) {
   return prisma.$transaction(async (tx) => {
     const refundKey = `refund:${idempotencyKey}`;
@@ -62,4 +68,4 @@ async function summary(userId) {
   return { balance: account?.balance ?? 0, transactions };
 }
 
-module.exports = { IMAGE_OPERATION_COSTS, creditCost, charge, preflight, refund, summary, newIdempotencyKey: () => crypto.randomUUID() };
+module.exports = { IMAGE_OPERATION_COSTS, creditCost, charge, preflight, hasCharge, refund, summary, newIdempotencyKey: () => crypto.randomUUID() };

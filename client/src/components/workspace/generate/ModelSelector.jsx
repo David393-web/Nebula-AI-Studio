@@ -3,7 +3,7 @@ import { Check, ChevronDown, ChevronRight, Search, Sparkles, X } from "lucide-re
 import api from "@/services/api";
 import { filterModels, getCapabilityBadges, groupModels, toggleProviderGroup } from "./modelSelector.utils";
 
-const FEATURE_FILTERS = ["References", "Audio"];
+const FEATURE_FILTERS = ["References", "First frame", "Audio"];
 
 export default function ModelSelector({ type, value = "auto", onChange, requiredAudio }) {
   const [open, setOpen] = useState(false);
